@@ -55,8 +55,6 @@ class VehicleBodyParameters:
     h_CG: float = 0.5           # CG 높이 [m]
     a: float = 1.4              # CG → 전축 거리 [m]
     b: float = 1.4              # CG → 후축 거리 [m]
-    L_track: float = 1.6        # 트랙 폭 [m]
-    L_wheelbase: float = 2.8    # 휠베이스 [m]
 
     # 물리 상수
     g: float = 9.81             # 중력가속도 [m/s²]
@@ -117,19 +115,8 @@ class VehicleBody:
                 h_CG=float(susp_param.get('z_CG0', 0.5)),
                 a=abs(self.corner_offsets['FL']['x']),
                 b=abs(self.corner_offsets['RL']['x']),
-                L_track=float(geometry.get('L_track', 1.6)),
-                L_wheelbase=float(geometry.get('L_wheelbase', 2.8)),
                 g=float(physics_param.get('g', 9.81))
             )
-        else:
-            self.params = parameters
-            # 파라미터로 초기화할 경우 corner_offsets 계산
-            self.corner_offsets = {
-                "FL": {"x": parameters.a, "y": parameters.L_track / 2.0},
-                "FR": {"x": parameters.a, "y": -parameters.L_track / 2.0},
-                "RL": {"x": -parameters.b, "y": parameters.L_track / 2.0},
-                "RR": {"x": -parameters.b, "y": -parameters.L_track / 2.0}
-            }
 
         self.state = VehicleBodyState()
         self.wheel_labels: List[str] = ["FL", "FR", "RR", "RL"]  # 4개 바퀴 고정
