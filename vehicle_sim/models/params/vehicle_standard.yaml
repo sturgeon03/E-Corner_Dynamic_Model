@@ -87,8 +87,8 @@ suspension:
   K_spring: 35000 #34425.0     # 스프링 강성 [N/m] (기본값, 축별 미지정 시 사용)
 
   # 축별 스프링 강성 (선택)
-  K_spring_front: 48000 #54000 #22000 #54000   # 전륜 스프링 강성 [N/m]
-  K_spring_rear: 32000 #17000 #48000 --> foward test    # 후륜 스프링 강성 [N/m]
+  K_spring_front: 54000 #54000 #22000 #54000   # 전륜 스프링 강성 [N/m]
+  K_spring_rear: 48000 #17000 #48000 --> foward test    # 후륜 스프링 강성 [N/m]
 
   # 댐퍼 파라미터 (Front/Rear, Compression/Rebound 분리)
   # Ref: CarMaker Suspension Damper Characteristics
