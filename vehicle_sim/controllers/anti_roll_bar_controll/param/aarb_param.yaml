@@ -1,0 +1,6 @@
+aarb:
+  k_arb_front: 30000.0   # 전륜 ARB 강성 [N/m]
+  c_arb_front: 2000.0    # 전륜 ARB 댐핑 [N*s/m]
+  k_arb_rear:  25000.0   # 후륜 ARB 강성 [N/m]
+  c_arb_rear:  1500.0    # 후륜 ARB 댐핑 [N*s/m]
+  track_width: 1.634     # 트랙 폭 [m]
