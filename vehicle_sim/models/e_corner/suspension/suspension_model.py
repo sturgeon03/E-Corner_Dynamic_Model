@@ -40,11 +40,6 @@ class SuspensionParameters:
     efficiency: float = 0.9     # 기계적 효율 [-]
     F_active_max: Optional[float] = 4000.0  # 액티브 힘 포화 한계 [N] (없애려면 None)
 
-    # 차량 기하
-    L_track: float = 1.6        # 트랙 폭 [m]
-    L_wheelbase: float = 2.8    # 휠베이스 [m]
-    sign_roll: int = 1          # Roll 부호
-    sign_pitch: int = 1         # Pitch 부호
 
 
 @dataclass
@@ -129,13 +124,6 @@ class SuspensionModel:
 
         geometry = vehicle_spec.get('geometry', {})
         corner_offsets = geometry.get('corner_offsets', {})
-        sign_map = {
-            "FL": {"roll": 1, "pitch": 1},
-            "FR": {"roll": -1, "pitch": 1},
-            "RL": {"roll": 1, "pitch": -1},
-            "RR": {"roll": -1, "pitch": -1},
-        }
-        signs = sign_map[corner_id]
 
         # 평형점 계산 (내부에서 직접 계산)
         z_CG0 = float(susp_param.get('z_CG0', 0.5))
@@ -203,21 +191,12 @@ class SuspensionModel:
             lead=float(susp_param.get('lead', 0.01)),
             efficiency=float(susp_param.get('efficiency', 0.9)),
             F_active_max=float(susp_param.get('F_active_max', SuspensionParameters.F_active_max)),
-            L_track=float(geometry.get('L_track', 1.6)),
-            L_wheelbase=float(geometry.get('L_wheelbase', 2.8)),
-            sign_roll=int(signs["roll"]),
-            sign_pitch=int(signs["pitch"])
         )
 
-        # 코너별 CG 기준 오프셋 (geometry.corner_offsets 우선)
+        # 코너별 CG 기준 오프셋
         offsets_for_corner = corner_offsets.get(corner_id, {})
-        if offsets_for_corner:
-            self._x_i = float(offsets_for_corner.get('x', 0.0))
-            self._y_i = float(offsets_for_corner.get('y', 0.0))
-        else:
-            # 백업: 기존 sign 기반 절반 값
-            self._x_i = (self.params.L_wheelbase / 2.0) * self.params.sign_pitch
-            self._y_i = (self.params.L_track / 2.0) * self.params.sign_roll
+        self._x_i = float(offsets_for_corner.get('x', 0.0))
+        self._y_i = float(offsets_for_corner.get('y', 0.0))
 
         # 타이어 파라미터
         vert_param = tire_param.get('vertical', {})

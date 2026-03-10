@@ -89,12 +89,16 @@ class VehicleBody:
 
             # corner_offsets 로드 (CG 기준 각 코너 위치)
             corner_offsets = geometry.get('corner_offsets', {})
-
-            # a, b (CG→전축/후축 거리) - front는 양수, rear는 양수 크기로 저장
-            front_x = float(corner_offsets.get('FL', {}).get('x', 1.155))
-            rear_x = float(corner_offsets.get('RL', {}).get('x', -1.815))
-            a = abs(front_x)  # CG → 전축 거리
-            b = abs(rear_x)   # CG → 후축 거리
+            self.corner_offsets = {
+                "FL": {"x": float(corner_offsets.get('FL', {}).get('x', 1.155)),
+                       "y": float(corner_offsets.get('FL', {}).get('y', 0.817))},
+                "FR": {"x": float(corner_offsets.get('FR', {}).get('x', 1.155)),
+                       "y": float(corner_offsets.get('FR', {}).get('y', -0.817))},
+                "RL": {"x": float(corner_offsets.get('RL', {}).get('x', -1.815)),
+                       "y": float(corner_offsets.get('RL', {}).get('y', 0.817))},
+                "RR": {"x": float(corner_offsets.get('RR', {}).get('x', -1.815)),
+                       "y": float(corner_offsets.get('RR', {}).get('y', -0.817))}
+            }
 
             # 언스프렁 질량 로드 및 전체 질량 계산
             m_sprung = float(vehicle_body.get('m', 1500.0))
@@ -111,24 +115,12 @@ class VehicleBody:
                 Izz=float(inertia.get('Izz', 2800.0)),
                 Ixz=float(inertia.get('Ixz', 0.0)),
                 h_CG=float(susp_param.get('z_CG0', 0.5)),
-                a=a,
-                b=b,
+                a=abs(self.corner_offsets['FL']['x']),
+                b=abs(self.corner_offsets['RL']['x']),
                 L_track=float(geometry.get('L_track', 1.6)),
                 L_wheelbase=float(geometry.get('L_wheelbase', 2.8)),
                 g=float(physics_param.get('g', 9.81))
             )
-
-            # corner_offsets 저장 (실제 코너 위치 계산에 사용)
-            self.corner_offsets = {
-                "FL": {"x": float(corner_offsets.get('FL', {}).get('x', 1.155)),
-                       "y": float(corner_offsets.get('FL', {}).get('y', 0.817))},
-                "FR": {"x": float(corner_offsets.get('FR', {}).get('x', 1.155)),
-                       "y": float(corner_offsets.get('FR', {}).get('y', -0.817))},
-                "RL": {"x": float(corner_offsets.get('RL', {}).get('x', -1.815)),
-                       "y": float(corner_offsets.get('RL', {}).get('y', 0.817))},
-                "RR": {"x": float(corner_offsets.get('RR', {}).get('x', -1.815)),
-                       "y": float(corner_offsets.get('RR', {}).get('y', -0.817))}
-            }
         else:
             self.params = parameters
             # 파라미터로 초기화할 경우 corner_offsets 계산
