@@ -4,9 +4,11 @@ Active Anti-Roll Bar (AARB) Controller
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
+import yaml
 
 
 @dataclass
@@ -46,14 +48,23 @@ class ActiveAntiRollBarController:
     출력: 코너별 F_arb [N] 또는 T_susp [N*m]
     """
 
-    def __init__(self, gains: Optional[ActiveAntiRollBarGains] = None):
-        """
-        Active Anti-Roll Bar Controller 초기화
-
-        Args:
-            gains: ARB 게인 설정. None이면 기본값 사용
-        """
-        self.gains = gains if gains is not None else ActiveAntiRollBarGains()
+    def __init__(
+        self,
+        gains: Optional[ActiveAntiRollBarGains] = None,
+        config_path: Optional[str] = None,
+    ):
+        if config_path is not None:
+            with open(config_path, 'r') as f:
+                cfg = yaml.safe_load(f)['aarb']
+            self.gains = ActiveAntiRollBarGains(
+                k_arb_front = float(cfg['k_arb_front']),
+                c_arb_front = float(cfg['c_arb_front']),
+                k_arb_rear  = float(cfg['k_arb_rear']),
+                c_arb_rear  = float(cfg['c_arb_rear']),
+                track_width = float(cfg['track_width']),
+            )
+        else:
+            self.gains = gains if gains is not None else ActiveAntiRollBarGains()
 
         # 내부 상태 (진단용)
         self.M_arb_front: float = 0.0  # 전륜 ARB 모멘트 [N*m]
