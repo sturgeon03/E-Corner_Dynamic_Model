@@ -58,8 +58,7 @@ drive:
   max_wheel_speed: 60.63  # Wheel speed limit [rad/s]
 
 suspension:
-  # Default and axle-specific spring rates.
-  K_spring: 35000  # Fallback spring rate [N/m]
+  # Axle-specific spring rates.
   K_spring_front: 54000  # Front spring rate [N/m]
   K_spring_rear: 48000  # Rear spring rate [N/m]
 
