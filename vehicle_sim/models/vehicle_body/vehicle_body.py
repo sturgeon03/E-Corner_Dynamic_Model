@@ -133,10 +133,10 @@ class VehicleBody:
             self.params = parameters
             # 파라미터로 초기화할 경우 corner_offsets 계산
             self.corner_offsets = {
-                "FL": {"x": parameters.b, "y": parameters.L_track / 2.0},
-                "FR": {"x": parameters.b, "y": -parameters.L_track / 2.0},
-                "RL": {"x": -parameters.a, "y": parameters.L_track / 2.0},
-                "RR": {"x": -parameters.a, "y": -parameters.L_track / 2.0}
+                "FL": {"x": parameters.a, "y": parameters.L_track / 2.0},
+                "FR": {"x": parameters.a, "y": -parameters.L_track / 2.0},
+                "RL": {"x": -parameters.b, "y": parameters.L_track / 2.0},
+                "RR": {"x": -parameters.b, "y": -parameters.L_track / 2.0}
             }
 
         self.state = VehicleBodyState()
