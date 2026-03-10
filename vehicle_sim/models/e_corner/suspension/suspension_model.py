@@ -131,12 +131,11 @@ class SuspensionModel:
         K_t = float(tire_param.get('vertical', {}).get('K_t', 200000.0))
 
         # 스프링 강성 (Front/Rear 구분)
-        K_spring_default = float(susp_param.get('K_spring', 25000.0))
         if corner_id in ['FL', 'FR']:
-            K_spring = float(susp_param.get('K_spring_front', K_spring_default))
+            K_spring = float(susp_param.get('K_spring_front', 54000.0))
             m_u = float(unsprung_param.get('m_u_front', unsprung_param.get('m_u', 50.0)))
         else:  # RL, RR
-            K_spring = float(susp_param.get('K_spring_rear', K_spring_default))
+            K_spring = float(susp_param.get('K_spring_rear', 48000.0))
             m_u = float(unsprung_param.get('m_u_rear', unsprung_param.get('m_u', 50.0)))
 
         m_s = float(vehicle_body.get('m', 1500.0))  # 전체 차체 스프렁 질량

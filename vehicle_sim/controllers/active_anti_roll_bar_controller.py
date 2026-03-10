@@ -23,9 +23,6 @@ class ActiveAntiRollBarGains:
     # Track width (좌우 간격)
     track_width: float = 1.634      # 트랙 폭 [m]
 
-    # 힘 제한
-    max_force: Optional[float] = None  # 최대 액티브 힘 [N] (None이면 서스펜션 모델 제한 사용)
-
 
 class ActiveAntiRollBarController:
     """
@@ -126,13 +123,7 @@ class ActiveAntiRollBarController:
             "RR": +self.M_arb_rear / track,
         }
 
-        # 4. 힘 제한 (선택)
-        max_force = self.gains.max_force
-        if max_force is not None:
-            for corner in F_arb:
-                F_arb[corner] = float(np.clip(F_arb[corner], -max_force, max_force))
-
-        # 5. 출력 타입에 따라 변환
+        # 4. 출력 타입에 따라 변환
         if output_type == "force":
             return F_arb
         elif output_type == "torque":
