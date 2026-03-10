@@ -446,7 +446,7 @@ class VehicleBody:
 
         # E-Corner도 평형으로 리셋
         for corner in self.corners.values():
-            corner.suspension.reset()
+            corner.reset()
 
         # 리셋 후 한 번 업데이트하여 평형 상태의 힘을 계산
         dummy_inputs = {
