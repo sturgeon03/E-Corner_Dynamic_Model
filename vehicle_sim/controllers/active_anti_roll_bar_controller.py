@@ -13,11 +13,11 @@ import numpy as np
 class ActiveAntiRollBarGains:
     """Active Anti-Roll Bar PD 게인 (축별)"""
     # Front ARB
-    k_arb_front: float = 500000.0    # 전륜 ARB 강성 [N/m]
+    k_arb_front: float = 30000.0    # 전륜 ARB 강성 [N/m]
     c_arb_front: float = 2000.0     # 전륜 ARB 댐핑 [N*s/m]
 
     # Rear ARB
-    k_arb_rear: float = 400000.0     # 후륜 ARB 강성 [N/m]
+    k_arb_rear: float = 25000.0     # 후륜 ARB 강성 [N/m]
     c_arb_rear: float = 1500.0      # 후륜 ARB 댐핑 [N*s/m]
 
     # Track width (좌우 간격)
