@@ -54,7 +54,7 @@ class ActiveAntiRollBarController:
         config_path: Optional[str] = None,
     ):
         if config_path is not None:
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 cfg = yaml.safe_load(f)['aarb']
             self.gains = ActiveAntiRollBarGains(
                 k_arb_front = float(cfg['k_arb_front']),
