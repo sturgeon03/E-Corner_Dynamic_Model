@@ -131,3 +131,57 @@ vehicle_body:
     Iyy: 2732.2  # Pitch inertia [kg*m^2]
     Izz: 2900.3  # Yaw inertia [kg*m^2]
     Ixz: 0.0  # Product of inertia in xz plane [kg*m^2]
+
+# ========================================
+# Integrated Lateral Controller
+# ========================================
+lateral_controller:
+  # Yaw-rate feedback: Mz_fb = PID(r_cmd - r_meas)
+  yaw_rate_pid:
+    kp: 1200.0
+    ki: 40.0
+    kd: 20.0
+
+  # Steering-angle tracking to steering torque per wheel.
+  steer_torque_pid:
+    kp: 80.0
+    ki: 0.0
+    kd: 2.0
+    # Optional per-wheel overrides:
+    # per_wheel:
+    #   FL: {kp: 80.0, ki: 0.0, kd: 2.0}
+    #   FR: {kp: 80.0, ki: 0.0, kd: 2.0}
+    #   RL: {kp: 80.0, ki: 0.0, kd: 2.0}
+    #   RR: {kp: 80.0, ki: 0.0, kd: 2.0}
+
+  yaw_moment_feedforward:
+    max_yaw_accel: 5.0
+    torque_limit: 6000.0
+
+  yaw_moment_allocator:
+    min_abs_x: 1.0e-6
+
+  lateral_force_estimator:
+    ay_bias: 0.0
+    lowpass_tau: 0.05
+    max_abs_ay: 20.0
+
+  slip_angle_estimator:
+    ay_bias: 0.0
+    lowpass_tau: 0.05
+    vy_init: 0.0
+    vy_limit: 20.0
+    leak_tau: 2.0
+    min_vx: 0.3
+
+  steering_feedforward:
+    clamp_fy: true
+    unwrap_delta: true
+
+  behavior:
+    use_estimated_fy_bias: false
+    use_estimated_vy_ref: false
+
+  output_limits:
+    yaw_moment: 6000.0
+    steer_torque: 120.0
