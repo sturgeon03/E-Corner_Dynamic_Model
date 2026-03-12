@@ -2,7 +2,7 @@
 Integrated lateral controller: yaw-rate command to per-wheel steering torque commands.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
@@ -26,6 +26,39 @@ from .yaw_moment_feedforward_controller import (
 class LateralTorqueControllerBehavior:
     use_estimated_fy_bias: bool = False
     use_estimated_vy_ref: bool = False
+
+
+@dataclass
+class LateralSensorFrame:
+    """Sensor snapshot used by the lateral controller."""
+
+    yaw_rate: float
+    ay: float
+    vx: float
+    steer_angle: Dict[str, float]
+    wheel_speed: Dict[str, float] = field(default_factory=dict)
+    fx_body: Optional[Dict[str, float]] = None
+    timestamp: Optional[float] = None
+    valid: bool = True
+
+
+@dataclass
+class LateralRequest:
+    """Control request for one step."""
+
+    yaw_rate_cmd: float
+    yaw_accel_cmd: Optional[float] = None
+    vy_cmd: Optional[float] = None
+    fy_total_cmd: Optional[float] = None
+
+
+@dataclass
+class LateralOutput:
+    """Controller output bundle for one step."""
+
+    steer_torque_cmd: Dict[str, float]
+    valid: bool = True
+    debug: Dict[str, object] = field(default_factory=dict)
 
 
 class LateralYawRateTorqueController:
@@ -216,74 +249,55 @@ class LateralYawRateTorqueController:
         self.steering_ff.reset()
         self.last_debug = {}
 
-    def _resolve_delta_meas(self, delta_meas: Optional[Dict[str, float]]) -> Dict[str, float]:
-        if delta_meas is not None:
-            return {label: float(delta_meas.get(label, 0.0)) for label in self.vehicle_body.wheel_labels}
-
-        return {
-            label: float(self.vehicle_body.corners[label].state.steering_angle)
-            for label in self.vehicle_body.wheel_labels
-        }
-
-    def step(
+    def sensor_from_vehicle(
         self,
-        yaw_rate_cmd: float,
-        yaw_rate_meas: Optional[float] = None,
-        vx_meas: Optional[float] = None,
-        ay_meas: Optional[float] = None,
-        yaw_accel_cmd: Optional[float] = None,
         fx_body: Optional[Dict[str, float]] = None,
-        fy_total_cmd: Optional[float] = None,
-        delta_meas: Optional[Dict[str, float]] = None,
-        vy_cmd: Optional[float] = None,
-    ) -> Dict[str, float]:
-        """Return per-wheel steering torque commands [N*m]."""
-        torque_cmd, _ = self.step_with_debug(
-            yaw_rate_cmd=yaw_rate_cmd,
-            yaw_rate_meas=yaw_rate_meas,
-            vx_meas=vx_meas,
-            ay_meas=ay_meas,
-            yaw_accel_cmd=yaw_accel_cmd,
+        timestamp: Optional[float] = None,
+    ) -> LateralSensorFrame:
+        """Build a sensor frame from the current VehicleBody state."""
+        return LateralSensorFrame(
+            yaw_rate=float(self.vehicle_body.state.yaw_rate),
+            ay=float(getattr(self.vehicle_body.state, "ay_prev", 0.0)),
+            vx=float(self.vehicle_body.state.velocity_x),
+            steer_angle={
+                label: float(self.vehicle_body.corners[label].state.steering_angle)
+                for label in self.vehicle_body.wheel_labels
+            },
+            wheel_speed={
+                label: float(self.vehicle_body.corners[label].state.omega_wheel)
+                for label in self.vehicle_body.wheel_labels
+            },
             fx_body=fx_body,
-            fy_total_cmd=fy_total_cmd,
-            delta_meas=delta_meas,
-            vy_cmd=vy_cmd,
+            timestamp=timestamp,
+            valid=True,
         )
-        return torque_cmd
 
-    def step_with_debug(
+    def _resolve_delta_map(self, steer_angle: Optional[Dict[str, float]]) -> Dict[str, float]:
+        steer_angle = steer_angle or {}
+        delta_map: Dict[str, float] = {}
+        for label in self.vehicle_body.wheel_labels:
+            if label in steer_angle:
+                delta_map[label] = float(steer_angle[label])
+            else:
+                delta_map[label] = float(self.vehicle_body.corners[label].state.steering_angle)
+        return delta_map
+
+    def _compute_control(
         self,
         yaw_rate_cmd: float,
-        yaw_rate_meas: Optional[float] = None,
-        vx_meas: Optional[float] = None,
-        ay_meas: Optional[float] = None,
-        yaw_accel_cmd: Optional[float] = None,
-        fx_body: Optional[Dict[str, float]] = None,
-        fy_total_cmd: Optional[float] = None,
-        delta_meas: Optional[Dict[str, float]] = None,
-        vy_cmd: Optional[float] = None,
+        yaw_rate_meas: float,
+        vx_meas: float,
+        ay_meas: float,
+        yaw_accel_cmd: Optional[float],
+        fx_body: Optional[Dict[str, float]],
+        fy_total_cmd: Optional[float],
+        delta_map: Dict[str, float],
+        vy_cmd: Optional[float],
     ) -> Tuple[Dict[str, float], Dict[str, object]]:
-        """
-        Run one control step and return:
-        (per-wheel steering torque commands [N*m], debug dictionary).
-        """
         yaw_rate_cmd = float(yaw_rate_cmd)
-        yaw_rate_meas = (
-            float(yaw_rate_meas)
-            if yaw_rate_meas is not None
-            else float(self.vehicle_body.state.yaw_rate)
-        )
-        vx_meas = (
-            float(vx_meas)
-            if vx_meas is not None
-            else float(self.vehicle_body.state.velocity_x)
-        )
-        ay_meas = (
-            float(ay_meas)
-            if ay_meas is not None
-            else float(getattr(self.vehicle_body.state, "ay_prev", 0.0))
-        )
-        delta_map = self._resolve_delta_meas(delta_meas)
+        yaw_rate_meas = float(yaw_rate_meas)
+        vx_meas = float(vx_meas)
+        ay_meas = float(ay_meas)
 
         yaw_error = float(yaw_rate_cmd - yaw_rate_meas)
         mz_fb = float(self.yaw_rate_pid.update(yaw_error))
@@ -356,6 +370,121 @@ class LateralYawRateTorqueController:
         self.last_debug = debug
         return torque_cmd, debug
 
+    def update(self, sensor: LateralSensorFrame, request: LateralRequest) -> LateralOutput:
+        """
+        Real-car style update API using structured sensor/request messages.
+        """
+        if not sensor.valid:
+            zero_cmd = {label: 0.0 for label in self.vehicle_body.wheel_labels}
+            debug = {"reason": "invalid_sensor_frame", "sensor_timestamp": sensor.timestamp}
+            self.last_debug = debug
+            return LateralOutput(steer_torque_cmd=zero_cmd, valid=False, debug=debug)
+
+        delta_map = self._resolve_delta_map(sensor.steer_angle)
+        torque_cmd, debug = self._compute_control(
+            yaw_rate_cmd=float(request.yaw_rate_cmd),
+            yaw_rate_meas=float(sensor.yaw_rate),
+            vx_meas=float(sensor.vx),
+            ay_meas=float(sensor.ay),
+            yaw_accel_cmd=request.yaw_accel_cmd,
+            fx_body=sensor.fx_body,
+            fy_total_cmd=request.fy_total_cmd,
+            delta_map=delta_map,
+            vy_cmd=request.vy_cmd,
+        )
+        debug["sensor_timestamp"] = sensor.timestamp
+        debug["sensor_wheel_speed"] = dict(sensor.wheel_speed)
+        return LateralOutput(steer_torque_cmd=torque_cmd, valid=True, debug=debug)
+
+    def step(
+        self,
+        yaw_rate_cmd: float,
+        yaw_rate_meas: Optional[float] = None,
+        vx_meas: Optional[float] = None,
+        ay_meas: Optional[float] = None,
+        yaw_accel_cmd: Optional[float] = None,
+        fx_body: Optional[Dict[str, float]] = None,
+        fy_total_cmd: Optional[float] = None,
+        delta_meas: Optional[Dict[str, float]] = None,
+        vy_cmd: Optional[float] = None,
+    ) -> Dict[str, float]:
+        """
+        Backward-compatible wrapper around update(...).
+        """
+        sensor = LateralSensorFrame(
+            yaw_rate=(
+                float(yaw_rate_meas)
+                if yaw_rate_meas is not None
+                else float(self.vehicle_body.state.yaw_rate)
+            ),
+            ay=(
+                float(ay_meas)
+                if ay_meas is not None
+                else float(getattr(self.vehicle_body.state, "ay_prev", 0.0))
+            ),
+            vx=(
+                float(vx_meas)
+                if vx_meas is not None
+                else float(self.vehicle_body.state.velocity_x)
+            ),
+            steer_angle=self._resolve_delta_map(delta_meas),
+            wheel_speed={},
+            fx_body=fx_body,
+            valid=True,
+        )
+        request = LateralRequest(
+            yaw_rate_cmd=float(yaw_rate_cmd),
+            yaw_accel_cmd=yaw_accel_cmd,
+            vy_cmd=vy_cmd,
+            fy_total_cmd=fy_total_cmd,
+        )
+        return self.update(sensor=sensor, request=request).steer_torque_cmd
+
+    def step_with_debug(
+        self,
+        yaw_rate_cmd: float,
+        yaw_rate_meas: Optional[float] = None,
+        vx_meas: Optional[float] = None,
+        ay_meas: Optional[float] = None,
+        yaw_accel_cmd: Optional[float] = None,
+        fx_body: Optional[Dict[str, float]] = None,
+        fy_total_cmd: Optional[float] = None,
+        delta_meas: Optional[Dict[str, float]] = None,
+        vy_cmd: Optional[float] = None,
+    ) -> Tuple[Dict[str, float], Dict[str, object]]:
+        """
+        Backward-compatible debug wrapper around update(...).
+        """
+        sensor = LateralSensorFrame(
+            yaw_rate=(
+                float(yaw_rate_meas)
+                if yaw_rate_meas is not None
+                else float(self.vehicle_body.state.yaw_rate)
+            ),
+            ay=(
+                float(ay_meas)
+                if ay_meas is not None
+                else float(getattr(self.vehicle_body.state, "ay_prev", 0.0))
+            ),
+            vx=(
+                float(vx_meas)
+                if vx_meas is not None
+                else float(self.vehicle_body.state.velocity_x)
+            ),
+            steer_angle=self._resolve_delta_map(delta_meas),
+            wheel_speed={},
+            fx_body=fx_body,
+            valid=True,
+        )
+        request = LateralRequest(
+            yaw_rate_cmd=float(yaw_rate_cmd),
+            yaw_accel_cmd=yaw_accel_cmd,
+            vy_cmd=vy_cmd,
+            fy_total_cmd=fy_total_cmd,
+        )
+        out = self.update(sensor=sensor, request=request)
+        return out.steer_torque_cmd, out.debug
+
     def step_from_vehicle(
         self,
         yaw_rate_cmd: float,
@@ -363,22 +492,20 @@ class LateralYawRateTorqueController:
         fx_body: Optional[Dict[str, float]] = None,
         fy_total_cmd: Optional[float] = None,
         vy_cmd: Optional[float] = None,
+        timestamp: Optional[float] = None,
     ) -> Dict[str, float]:
         """
         Convenience one-liner step:
         uses yaw rate, longitudinal speed, lateral acceleration, and steering angles from vehicle_body.
         """
-        return self.step(
-            yaw_rate_cmd=yaw_rate_cmd,
-            yaw_rate_meas=float(self.vehicle_body.state.yaw_rate),
-            vx_meas=float(self.vehicle_body.state.velocity_x),
-            ay_meas=float(getattr(self.vehicle_body.state, "ay_prev", 0.0)),
+        sensor = self.sensor_from_vehicle(fx_body=fx_body, timestamp=timestamp)
+        request = LateralRequest(
+            yaw_rate_cmd=float(yaw_rate_cmd),
             yaw_accel_cmd=yaw_accel_cmd,
-            fx_body=fx_body,
-            fy_total_cmd=fy_total_cmd,
-            delta_meas=None,
             vy_cmd=vy_cmd,
+            fy_total_cmd=fy_total_cmd,
         )
+        return self.update(sensor=sensor, request=request).steer_torque_cmd
 
 
 def build_lateral_torque_controller(

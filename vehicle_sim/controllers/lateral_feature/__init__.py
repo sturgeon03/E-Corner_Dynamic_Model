@@ -3,6 +3,9 @@ Public lateral controller API.
 """
 
 from .lateral_feature import (
+    LateralOutput,
+    LateralRequest,
+    LateralSensorFrame,
     LateralTorqueControllerBehavior,
     LateralYawRateTorqueController,
     build_lateral_torque_controller,
@@ -10,6 +13,9 @@ from .lateral_feature import (
 )
 
 __all__ = [
+    "LateralSensorFrame",
+    "LateralRequest",
+    "LateralOutput",
     "LateralTorqueControllerBehavior",
     "LateralYawRateTorqueController",
     "build_lateral_torque_controller",

@@ -12,6 +12,9 @@ from .yaw_moment_feedforward_controller import (
     YawMomentFeedforwardOptions,
 )
 from .yawrate_to_torque_controller import (
+    LateralOutput,
+    LateralRequest,
+    LateralSensorFrame,
     LateralTorqueControllerBehavior,
     LateralYawRateTorqueController,
     build_lateral_torque_controller,
@@ -30,6 +33,9 @@ __all__ = [
     "SlipAngleEstimatorOptions",
     "LateralForceEstimator",
     "LateralForceEstimatorOptions",
+    "LateralSensorFrame",
+    "LateralRequest",
+    "LateralOutput",
     "LateralTorqueControllerBehavior",
     "LateralYawRateTorqueController",
     "build_lateral_torque_controller",
