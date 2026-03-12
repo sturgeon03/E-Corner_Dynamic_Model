@@ -24,6 +24,7 @@ The repository already contains the core model hierarchy and a central YAML para
 - YAML-based parameter loading shared across modules
 - trajectory primitives and sine-path generation utilities under `vehicle_sim/scenarios`
 - an active anti-roll-bar controller under `vehicle_sim/controllers`
+- an integrated lateral controller chain (`yawrate -> steering torque`) under `vehicle_sim/controllers/lateral_feature`
 
 ## Installation
 
@@ -63,6 +64,16 @@ corner_inputs = {
 vehicle.update(dt=0.001, corner_inputs=corner_inputs)
 state_vector = vehicle.get_state_vector()
 print(state_vector)
+```
+
+Lateral controller one-line step:
+
+```python
+from vehicle_sim import VehicleBody, create_lateral_torque_stepper
+
+vehicle = VehicleBody()
+step_lateral = create_lateral_torque_stepper(vehicle_body=vehicle, dt=0.001)
+T_steer_cmd = step_lateral(yaw_rate_cmd=0.15)  # {"FL":..., "FR":..., "RR":..., "RL":...}
 ```
 
 For a deeper breakdown of the package, model interfaces, configuration layout, and known limitations, see `vehicle_sim/README.md`.

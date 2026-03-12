@@ -8,7 +8,12 @@ The package-level API currently exposes:
 
 ```python
 from vehicle_sim import VehicleBody, ECorner
-from vehicle_sim.controllers import ActiveAntiRollBarController, ActiveAntiRollBarGains
+from vehicle_sim.controllers import (
+    ActiveAntiRollBarController,
+    ActiveAntiRollBarGains,
+    LateralYawRateTorqueController,
+    create_lateral_torque_stepper,
+)
 from vehicle_sim import scenarios
 ```
 
@@ -141,11 +146,25 @@ Two separate tire models are used:
 
 ### `controllers/active_anti_roll_bar_controller.py`
 
-The controller package currently contains an active anti-roll-bar controller. It:
+This controller:
 
 - takes left/right suspension stroke and stroke-rate differences at front and rear
 - computes anti-roll moment with PD-like gains
 - maps the result to either per-corner force or suspension actuator torque
+
+### `controllers/lateral_feature/`
+
+This package now also contains an integrated lateral controller chain:
+
+- yaw-rate command -> yaw moment feedforward + PID feedback
+- yaw moment -> per-wheel lateral force allocation
+- per-wheel lateral force -> steering-angle feedforward
+- steering-angle tracking PID -> per-wheel steering torque command
+
+For simplified usage, use:
+
+- `LateralYawRateTorqueController` (object API)
+- `create_lateral_torque_stepper(...)` (one-line step function API)
 
 ### `scenarios/`
 
@@ -244,6 +263,18 @@ F_s, F_x, F_y = corner.update(
 
 print(F_s, F_x, F_y)
 print(corner.get_state())
+```
+
+### One-line lateral controller step
+
+```python
+from vehicle_sim import VehicleBody, create_lateral_torque_stepper
+
+vehicle = VehicleBody()
+step_lateral = create_lateral_torque_stepper(vehicle_body=vehicle, dt=0.001)
+
+# One-line control call (returns {"FL": T, "FR": T, "RR": T, "RL": T} in N*m)
+T_steer_cmd = step_lateral(yaw_rate_cmd=0.15)
 ```
 
 ## Conventions and assumptions

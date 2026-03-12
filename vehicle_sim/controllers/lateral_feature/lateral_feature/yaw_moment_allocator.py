@@ -3,7 +3,7 @@ Yaw moment allocator using equal per-wheel moment split.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 
 @dataclass
@@ -12,13 +12,35 @@ class YawMomentAllocator:
 
     Note:
         This allocator returns per-wheel lateral force commands in the wheel frame (Fy_wheel_cmd).
-        It uses the body-frame yaw moment relationship (Mz = Σ(x_i*Fy - y_i*Fx)) with a small-angle
-        approximation that treats Fy_wheel ≈ Fy_body. This avoids an extra δ-dependent body→wheel
-        conversion stage downstream. If Fy_total_cmd is provided, it is split evenly and added as
-        a bias on top of the yaw-moment allocation.
+        It uses the body-frame yaw moment relationship (Mz = sum(x_i*Fy - y_i*Fx)) with a small-angle
+        approximation that treats Fy_wheel ~= Fy_body. If Fy_total_cmd is provided, it is split evenly
+        and added as a bias on top of the yaw-moment allocation.
     """
 
     min_abs_x: float = 1e-6
+
+    @staticmethod
+    def _resolve_wheel_xy(vehicle_body, label: str) -> Tuple[float, float]:
+        """Resolve wheel center coordinates in the body frame."""
+        if hasattr(vehicle_body, "corner_offsets") and label in vehicle_body.corner_offsets:
+            offset = vehicle_body.corner_offsets[label]
+            return float(offset["x"]), float(offset["y"])
+
+        # Backward compatibility for older geometry conventions.
+        if (
+            hasattr(vehicle_body, "corner_signs")
+            and hasattr(vehicle_body, "params")
+            and hasattr(vehicle_body.params, "L_wheelbase")
+            and hasattr(vehicle_body.params, "L_track")
+        ):
+            signs = vehicle_body.corner_signs[label]
+            x_i = (vehicle_body.params.L_wheelbase / 2.0) * signs["pitch"]
+            y_i = (vehicle_body.params.L_track / 2.0) * signs["roll"]
+            return float(x_i), float(y_i)
+
+        raise AttributeError(
+            "vehicle_body must provide corner_offsets or corner_signs/L_wheelbase/L_track"
+        )
 
     def allocate(
         self,
@@ -47,13 +69,12 @@ class YawMomentAllocator:
         fy_bias = float(Fy_total_cmd) / len(labels) if Fy_total_cmd is not None else 0.0
 
         for label in labels:
-            signs = vehicle_body.corner_signs[label]
-            x_i = (vehicle_body.params.L_wheelbase / 2.0) * signs["pitch"]
-            y_i = (vehicle_body.params.L_track / 2.0) * signs["roll"]
+            x_i, y_i = self._resolve_wheel_xy(vehicle_body, label)
             if abs(x_i) < self.min_abs_x:
-                raise ValueError("Wheelbase too small for yaw moment allocation")
+                raise ValueError("Wheel x-offset too small for yaw moment allocation")
+
             Fx_i = float(fx_map.get(label, 0.0))
-            # Small-angle approximation: treat Fy_wheel ≈ Fy_body in the yaw moment balance.
+            # Small-angle approximation: treat Fy_wheel ~= Fy_body in the yaw moment balance.
             fy_wheel_cmd[label] = (Mz_i + y_i * Fx_i) / x_i + fy_bias
 
         return fy_wheel_cmd

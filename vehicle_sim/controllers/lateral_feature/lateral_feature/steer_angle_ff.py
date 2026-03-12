@@ -1,5 +1,5 @@
 """
-각 휠의 횡력(Fy) 명령을 조향각(steering angle)으로 변환하는 피드포워드 매핑.
+Steering feedforward from per-wheel lateral-force commands.
 """
 
 from dataclasses import dataclass
@@ -16,12 +16,11 @@ class SteeringFeedforwardOptions:
 
 class SteeringFeedforwardController:
     """
-    휠 프레임 횡력(Fy_wheel_cmd) 명령을 타이어 역모델로 슬립각(alpha_cmd)으로 바꾸고,
-    목표(레퍼런스) 속도/요레이트로부터 바퀴별 속도방향(beta_ref)를 만든 뒤 조향각 명령을 만든다:
+    Convert wheel-frame lateral-force commands into steering-angle commands via a tire inverse model.
 
-        alpha_cmd = -Fy_wheel_cmd / C_alpha
-        beta_ref  = atan2(Vy_ref_body, Vx_ref_body)
-        delta_cmd = beta_ref - alpha_cmd
+    alpha_cmd = -Fy_wheel_cmd / C_alpha
+    beta_ref = atan2(Vy_ref_body, Vx_ref_body)
+    delta_cmd = beta_ref - alpha_cmd
     """
 
     def __init__(self, options: Optional[SteeringFeedforwardOptions] = None) -> None:
@@ -29,7 +28,7 @@ class SteeringFeedforwardController:
         self._prev_delta_cmd: Dict[str, float] = {}
 
     def reset(self) -> None:
-        """내부 명령 히스토리를 초기화한다(예: 시나리오 시작 시)."""
+        """Reset angle unwrapping memory."""
         self._prev_delta_cmd.clear()
 
     @staticmethod
@@ -39,6 +38,29 @@ class SteeringFeedforwardController:
     @classmethod
     def _unwrap_near(cls, angle: float, reference: float) -> float:
         return float(reference + cls._wrap_to_pi(angle - reference))
+
+    @staticmethod
+    def _resolve_wheel_xy(vehicle_body, label: str) -> Tuple[float, float]:
+        """Resolve wheel center coordinates in the body frame."""
+        if hasattr(vehicle_body, "corner_offsets") and label in vehicle_body.corner_offsets:
+            offset = vehicle_body.corner_offsets[label]
+            return float(offset["x"]), float(offset["y"])
+
+        # Backward compatibility for older geometry conventions.
+        if (
+            hasattr(vehicle_body, "corner_signs")
+            and hasattr(vehicle_body, "params")
+            and hasattr(vehicle_body.params, "L_wheelbase")
+            and hasattr(vehicle_body.params, "L_track")
+        ):
+            signs = vehicle_body.corner_signs[label]
+            x_i = (vehicle_body.params.L_wheelbase / 2.0) * signs["pitch"]
+            y_i = (vehicle_body.params.L_track / 2.0) * signs["roll"]
+            return float(x_i), float(y_i)
+
+        raise AttributeError(
+            "vehicle_body must provide corner_offsets or corner_signs/L_wheelbase/L_track"
+        )
 
     def compute_delta_cmd(
         self,
@@ -51,14 +73,15 @@ class SteeringFeedforwardController:
     ) -> Dict[str, float]:
         """
         Args:
-            vehicle_body: VehicleBody 인스턴스(상태 + 타이어 파라미터).
-            fy_wheel_cmd: 휠별 횡력(Fy) 명령 [N] (휠 로컬 프레임, +y가 좌측).
-            vx_cmd: 목표 종방향 속도 [m/s] (차체 좌표계, +x 전방).
-            yaw_rate_cmd: 목표 요레이트 [rad/s] (차체 좌표계, +는 CCW).
-            vy_cmd: 목표 횡방향 속도 [m/s] (차체 좌표계, +y 좌측). 기본 0.
+            vehicle_body: VehicleBody instance.
+            fy_wheel_cmd: per-wheel lateral-force commands [N] in wheel frame.
+            vx_cmd: reference longitudinal speed [m/s] in body frame.
+            yaw_rate_cmd: reference yaw rate [rad/s].
+            vy_cmd: reference lateral speed [m/s] in body frame.
+            c_alpha_override: optional per-wheel C_alpha overrides [N/rad].
 
         Returns:
-            휠별 조향각 명령 [rad].
+            Per-wheel steering-angle commands [rad].
         """
         delta_cmd, _ = self._compute_delta_cmd_impl(
             vehicle_body=vehicle_body,
@@ -81,8 +104,6 @@ class SteeringFeedforwardController:
         c_alpha_override: Optional[Dict[str, float]] = None,
     ) -> Tuple[Dict[str, float], Dict[str, Dict[str, float]]]:
         """
-        compute_delta_cmd와 동일하지만 중간 신호를 함께 반환한다.
-
         Returns:
             (delta_cmd, debug) where debug has keys: alpha_cmd, beta_ref, fy_wheel_clamped.
         """
@@ -115,10 +136,11 @@ class SteeringFeedforwardController:
         beta_ref_map: Dict[str, float] = {}
         fy_clamped_map: Dict[str, float] = {}
         labels = list(vehicle_body.wheel_labels)
+
         if set(self._prev_delta_cmd.keys()) != set(labels):
             self._prev_delta_cmd = {}
 
-        for idx, label in enumerate(labels):
+        for label in labels:
             corner = vehicle_body.corners[label]
             fy_in = float(fy_wheel_cmd.get(label, 0.0))
             ref = float(self._prev_delta_cmd.get(label, 0.0))
@@ -139,9 +161,7 @@ class SteeringFeedforwardController:
             if c_alpha == 0.0:
                 raise ValueError("C_alpha must be non-zero for feedforward steering")
 
-            signs = vehicle_body.corner_signs[label]
-            x_i = (vehicle_body.params.L_wheelbase / 2.0) * signs["pitch"]
-            y_i = (vehicle_body.params.L_track / 2.0) * signs["roll"]
+            x_i, y_i = self._resolve_wheel_xy(vehicle_body, label)
             vx_ref_body = vx_cmd - yaw_rate_cmd * y_i
             vy_ref_body = vy_cmd + yaw_rate_cmd * x_i
             beta_ref = float(np.arctan2(vy_ref_body, vx_ref_body))
@@ -151,7 +171,6 @@ class SteeringFeedforwardController:
             delta_raw = float(beta_ref - alpha_cmd_value)
 
             if self.options.unwrap_delta:
-                # atan2() 래핑(wrap-around)으로 Vx가 0을 넘거나 Vy 부호가 바뀔 때 생기는 2π 점프를 방지한다.
                 delta_raw = self._unwrap_near(delta_raw, ref)
 
             delta_cmd[label] = float(delta_raw)
