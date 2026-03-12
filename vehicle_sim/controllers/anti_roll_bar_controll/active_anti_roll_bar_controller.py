@@ -25,6 +25,10 @@ class ActiveAntiRollBarGains:
     # Track width (좌우 간격)
     track_width: float = 1.634      # 트랙 폭 [m]
 
+    # 힘→토크 변환 파라미터
+    lead:       float = 0.01        # 스크루 리드 [m/rev]
+    efficiency: float = 0.9         # 액추에이터 효율 [-]
+
 
 class ActiveAntiRollBarController:
     """
@@ -62,6 +66,8 @@ class ActiveAntiRollBarController:
                 k_arb_rear  = float(cfg['k_arb_rear']),
                 c_arb_rear  = float(cfg['c_arb_rear']),
                 track_width = float(cfg['track_width']),
+                lead        = float(cfg['lead']),
+                efficiency  = float(cfg['efficiency']),
             )
         else:
             self.gains = gains if gains is not None else ActiveAntiRollBarGains()
@@ -83,7 +89,6 @@ class ActiveAntiRollBarController:
         self,
         delta_s: Dict[str, float],
         delta_s_dot: Dict[str, float],
-        susp_models: Optional[Dict] = None,
         output_type: str = "torque",
     ) -> Dict[str, float]:
         """
@@ -93,7 +98,6 @@ class ActiveAntiRollBarController:
             delta_s: 각 코너의 서스펜션 스트로크 {corner: delta_s [m]}
                      {"FL": ..., "FR": ..., "RL": ..., "RR": ...}
             delta_s_dot: 각 코너의 스트로크 속도 {corner: delta_s_dot [m/s]}
-            susp_models: 서스펜션 모델 딕셔너리 (토크 변환용, 선택)
             output_type: "force" 또는 "torque" (기본: "torque")
 
         Returns:
@@ -138,50 +142,13 @@ class ActiveAntiRollBarController:
         if output_type == "force":
             return F_arb
         elif output_type == "torque":
-            T_susp = {}
-            for corner, F in F_arb.items():
-                if susp_models is not None and corner in susp_models:
-                    susp_params = susp_models[corner].params
-                    T_susp[corner] = self._force_to_torque(F, susp_params)
-                else:
-                    T_susp[corner] = self._force_to_torque_default(F)
-            return T_susp
+            return {corner: self._force_to_torque(F) for corner, F in F_arb.items()}
         else:
             raise ValueError(f"Invalid output_type: {output_type}. Must be 'force' or 'torque'.")
 
-    def _force_to_torque(self, F_act: float, susp_params) -> float:
-        """
-        액티브 힘을 서스펜션 액추에이터 토크로 변환
-
-        Args:
-            F_act: 액티브 힘 [N]
-            susp_params: 서스펜션 파라미터 (lead, efficiency, F_active_max)
-
-        Returns:
-            T_susp: 서스펜션 토크 [N*m]
-        """
-        # T = F * lead / (2π * efficiency)
-        lead = susp_params.lead if hasattr(susp_params, 'lead') else 0.01
-        efficiency = susp_params.efficiency if hasattr(susp_params, 'efficiency') else 0.9
-
-        T_susp = F_act * lead / (2.0 * np.pi * efficiency)
-        return float(T_susp)
-
-    def _force_to_torque_default(self, F_act: float) -> float:
-        """
-        기본 파라미터로 힘을 토크로 변환
-
-        Args:
-            F_act: 액티브 힘 [N]
-
-        Returns:
-            T_susp: 서스펜션 토크 [N*m]
-        """
-        # 기본값: lead=0.01 m/rev, efficiency=0.9
-        lead = 0.01
-        efficiency = 0.9
-        T_susp = F_act * lead / (2.0 * np.pi * efficiency)
-        return float(T_susp)
+    def _force_to_torque(self, F_act: float) -> float:
+        """F [N] → T [N*m] : T = F * lead / (2π * efficiency)"""
+        return float(F_act * self.gains.lead / (2.0 * np.pi * self.gains.efficiency))
 
     def get_state(self) -> Dict[str, float]:
         """

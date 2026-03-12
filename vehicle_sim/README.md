@@ -32,7 +32,6 @@ vehicle_sim/
 │   ├── driver_controller.py
 │   └── torque_vectoring_controller.py
 ├── scenarios/                  # 시뮬레이션 시나리오
-│   ├── base_scenario.py
 │   ├── straight_line_scenario.py
 │   ├── constant_radius_scenario.py
 │   └── double_lane_change_scenario.py
