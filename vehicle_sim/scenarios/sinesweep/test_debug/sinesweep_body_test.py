@@ -8,7 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
+ROOT_DIR = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT_DIR))
 
 CONFIG_PATH = ROOT_DIR / "vehicle_sim" / "models" / "params" / "vehicle_standard.yaml"
