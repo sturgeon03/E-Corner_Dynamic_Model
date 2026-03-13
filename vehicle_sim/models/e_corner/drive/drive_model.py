@@ -164,7 +164,7 @@ class DriveModel:
         # 8. 상태 업데이트
         self.state.wheel_speed = omega_limited
 
-        return omega_limited
+        return self.state.wheel_speed
 
     def apply_speed_limits(self, omega: float) -> float:
         """휠 속도 제한 적용 (65.535 km/h = 60.63 rad/s)"""
