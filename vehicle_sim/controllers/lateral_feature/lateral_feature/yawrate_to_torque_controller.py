@@ -530,7 +530,58 @@ def create_lateral_torque_stepper(
     config_path: Optional[str] = None,
 ) -> Callable[..., Dict[str, float]]:
     """
-    Return a one-line callable:
+    Return a callable with required minimal inputs:
+    torque_cmd = stepper(
+        yaw_rate_cmd=...,
+        yaw_rate=...,
+        ay=...,
+        vx=...,
+        steer_angle={...},
+    )
+    """
+    controller = build_lateral_torque_controller(
+        vehicle_body=vehicle_body,
+        dt=dt,
+        config=config,
+        config_path=config_path,
+    )
+
+    def stepper(
+        yaw_rate_cmd: float,
+        yaw_rate: float,
+        ay: float,
+        vx: float,
+        steer_angle: Dict[str, float],
+    ) -> Dict[str, float]:
+        sensor = LateralSensorFrame(
+            yaw_rate=float(yaw_rate),
+            ay=float(ay),
+            vx=float(vx),
+            steer_angle={k: float(v) for k, v in steer_angle.items()},
+            wheel_speed={},
+            fx_body=None,
+            timestamp=None,
+            valid=True,
+        )
+        request = LateralRequest(
+            yaw_rate_cmd=float(yaw_rate_cmd),
+            yaw_accel_cmd=None,
+            vy_cmd=None,
+            fy_total_cmd=None,
+        )
+        return controller.update(sensor=sensor, request=request).steer_torque_cmd
+
+    return stepper
+
+
+def create_lateral_torque_stepper_from_vehicle(
+    vehicle_body,
+    dt: float,
+    config: Optional[Dict] = None,
+    config_path: Optional[str] = None,
+) -> Callable[..., Dict[str, float]]:
+    """
+    Return a convenience callable that reads sensor values from vehicle_body internally:
     torque_cmd = stepper(yaw_rate_cmd=...)
     """
     controller = build_lateral_torque_controller(

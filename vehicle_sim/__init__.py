@@ -15,6 +15,7 @@ from .controllers import (
     LateralYawRateTorqueController,
     build_lateral_torque_controller,
     create_lateral_torque_stepper,
+    create_lateral_torque_stepper_from_vehicle,
 )
 from . import scenarios
 
@@ -30,5 +31,6 @@ __all__ = [
     'LateralYawRateTorqueController',
     'build_lateral_torque_controller',
     'create_lateral_torque_stepper',
+    'create_lateral_torque_stepper_from_vehicle',
     'scenarios'
 ]

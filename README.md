@@ -73,7 +73,16 @@ from vehicle_sim import VehicleBody, create_lateral_torque_stepper
 
 vehicle = VehicleBody()
 step_lateral = create_lateral_torque_stepper(vehicle_body=vehicle, dt=0.001)
-T_steer_cmd = step_lateral(yaw_rate_cmd=0.15)  # {"FL":..., "FR":..., "RR":..., "RL":...}
+T_steer_cmd = step_lateral(
+    yaw_rate_cmd=0.15,
+    yaw_rate=vehicle.state.yaw_rate,
+    ay=vehicle.state.ay_prev,
+    vx=vehicle.state.velocity_x,
+    steer_angle={
+        label: vehicle.corners[label].state.steering_angle
+        for label in vehicle.wheel_labels
+    },
+)  # {"FL":..., "FR":..., "RR":..., "RL":...}
 ```
 
 For a deeper breakdown of the package, model interfaces, configuration layout, and known limitations, see `vehicle_sim/README.md`.

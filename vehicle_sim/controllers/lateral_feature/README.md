@@ -55,19 +55,35 @@ T_steer_cmd = output.steer_torque_cmd  # {"FL":..., "FR":..., "RR":..., "RL":...
 debug = output.debug
 ```
 
-## One-Line Convenience
+## One-Line Convenience (Required Inputs Only)
 
-If you want a very short call, keep using:
+`create_lateral_torque_stepper(...)` now takes only the required runtime inputs:
 
 ```python
 from vehicle_sim import VehicleBody, create_lateral_torque_stepper
 
 vehicle = VehicleBody()
 step_lateral = create_lateral_torque_stepper(vehicle_body=vehicle, dt=0.001)
-T_steer_cmd = step_lateral(yaw_rate_cmd=0.15)
+T_steer_cmd = step_lateral(
+    yaw_rate_cmd=0.15,
+    yaw_rate=vehicle.state.yaw_rate,
+    ay=vehicle.state.ay_prev,
+    vx=vehicle.state.velocity_x,
+    steer_angle={
+        label: vehicle.corners[label].state.steering_angle
+        for label in vehicle.wheel_labels
+    },
+)
 ```
 
-Internally, this uses `LateralYawRateTorqueController.step_from_vehicle(...)`.
+If you want the old ultra-short wrapper (internally reads `vehicle_body` states), use:
+
+```python
+from vehicle_sim import create_lateral_torque_stepper_from_vehicle
+
+step_lateral_short = create_lateral_torque_stepper_from_vehicle(vehicle_body=vehicle, dt=0.001)
+T_steer_cmd = step_lateral_short(yaw_rate_cmd=0.15)
+```
 
 ## Typical Simulation Loop
 

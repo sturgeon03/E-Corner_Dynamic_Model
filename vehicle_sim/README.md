@@ -13,6 +13,7 @@ from vehicle_sim.controllers import (
     ActiveAntiRollBarGains,
     LateralYawRateTorqueController,
     create_lateral_torque_stepper,
+    create_lateral_torque_stepper_from_vehicle,
 )
 from vehicle_sim import scenarios
 ```
@@ -164,7 +165,8 @@ This package now also contains an integrated lateral controller chain:
 For simplified usage, use:
 
 - `LateralYawRateTorqueController` (object API)
-- `create_lateral_torque_stepper(...)` (one-line step function API)
+- `create_lateral_torque_stepper(...)` (required minimal-input wrapper)
+- `create_lateral_torque_stepper_from_vehicle(...)` (auto-read from `VehicleBody`)
 
 ### `scenarios/`
 
@@ -274,7 +276,16 @@ vehicle = VehicleBody()
 step_lateral = create_lateral_torque_stepper(vehicle_body=vehicle, dt=0.001)
 
 # One-line control call (returns {"FL": T, "FR": T, "RR": T, "RL": T} in N*m)
-T_steer_cmd = step_lateral(yaw_rate_cmd=0.15)
+T_steer_cmd = step_lateral(
+    yaw_rate_cmd=0.15,
+    yaw_rate=vehicle.state.yaw_rate,
+    ay=vehicle.state.ay_prev,
+    vx=vehicle.state.velocity_x,
+    steer_angle={
+        label: vehicle.corners[label].state.steering_angle
+        for label in vehicle.wheel_labels
+    },
+)
 ```
 
 ## Conventions and assumptions

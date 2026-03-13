@@ -11,6 +11,7 @@ from .lateral_feature import (
     LateralYawRateTorqueController,
     build_lateral_torque_controller,
     create_lateral_torque_stepper,
+    create_lateral_torque_stepper_from_vehicle,
 )
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     'LateralYawRateTorqueController',
     'build_lateral_torque_controller',
     'create_lateral_torque_stepper',
+    'create_lateral_torque_stepper_from_vehicle',
 ]
