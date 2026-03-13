@@ -179,7 +179,7 @@ class SuspensionModel:
 
         # 서스펜션 파라미터
         self.params = SuspensionParameters(
-            K_spring=K_spring,  # 이미 읽은 값 재사용
+            K_spring=K_spring,
             C_damper_compression=C_damper_compression,
             C_damper_rebound=C_damper_rebound,
             z_CG0=z_CG0,
@@ -216,9 +216,6 @@ class SuspensionModel:
         self.sprung_params = SprungParameters(
             m_s_corner=m_s_corner
         )
-
-        # 전체 스프렁 질량 저장 (참조용)
-        self.sprung_params.m_s_total = m_s
 
         # 평형 시 값 저장 (reset에서 사용)
         self._z_u_0 = z_u_0
@@ -298,52 +295,21 @@ class SuspensionModel:
         # 접촉력은 절대 음수 불가 (unilateral contact)
         return max(0.0, float(F_tire))
 
-    def _apply_tire_deflection_limits(self, delta_t: float, delta_t_dot: float, z_u_ddot: float) -> float:
-        """타이어 최대 압축 한계 적용 (비활성화 - 하드닝 강성이 물리적으로 처리)
-
-        하드닝 강성(K_hard)이 delta_t_max 초과 시 자동으로 큰 힘을 발생시켜
-        더 이상의 압축을 물리적으로 방지하므로, 인위적인 한계 적용은 불필요함.
-        """
-        # 하드닝 강성 사용 시 클리핑 비활성화
-        # at_max_and_compressing = (
-        #     delta_t >= self.tire_params.delta_t_max and
-        #     delta_t_dot >= 0.0 and
-        #     z_u_ddot <= 0.0  # z_u가 아래로 가속 -> delta_t 증가
-        # )
-        # if at_max_and_compressing:
-        #     self.state.z_u_dot = 0.0
-        #     return 0.0
-        return z_u_ddot
-
     def _clip_tire_deflection(self, z_road: float) -> float:
-        """적분 후 타이어 압축량 클리핑 (비활성화 - 하드닝 강성이 물리적으로 처리)
-
-        하드닝 강성이 delta_t_max 초과분을 물리적으로 처리하므로 클리핑 불필요.
-        단, 이륙 상태(delta_t <= 0)는 그대로 반환.
-
-        Returns:
-            계산된 delta_t [m]
-        """
+        """적분 후 타이어 압축량 계산, 이륙 상태(delta_t <= 0) 처리"""
         delta_t = self.params.R_w + z_road - self.state.z_u_abs
-
-        # 하드닝 강성 사용 시 최대값 클리핑 비활성화
-        # if delta_t > self.tire_params.delta_t_max:
-        #     self.state.z_u_abs = self.params.R_w + z_road - self.tire_params.delta_t_max
-        #     self.state.z_u_dot = 0.0
-        #     return float(self.tire_params.delta_t_max)
 
         if delta_t <= 0.0:
             return 0.0
 
         return float(delta_t)
 
-    def _apply_stroke_limits(self, z_body_abs: float, delta_s: float, delta_s_dot: float, z_u_ddot: float) -> float:
-        """서스펜션 스트로크 한계 적용 (Steering 방식)
+    def _apply_stroke_limits(self, delta_s: float, delta_s_dot: float, z_u_ddot: float) -> float:
+        """서스펜션 스트로크 한계 적용
 
         한계에 도달하고 더 나가려는 경우 가속도와 속도를 0으로
 
         Args:
-            z_body_abs: 차체 절대 높이 [m]
             delta_s: 현재 스트로크 [m]
             delta_s_dot: 스트로크 속도 [m/s]
             z_u_ddot: 휠 가속도 [m/s^2]
@@ -433,14 +399,11 @@ class SuspensionModel:
         delta_s = (z_body_abs - self.state.z_u_abs) - self.params.L_s0
         delta_s_dot = z_body_dot - self.state.z_u_dot
 
-        # Tire compression: wheel moving downward (z_u_abs decreases) makes delta_t positive
         delta_t = self.params.R_w + z_road - self.state.z_u_abs
-        # delta_t_dot = d/dt(R_w + z_road - z_u_abs) = z_road_dot - z_u_dot
         delta_t_dot = z_road_dot - self.state.z_u_dot
 
         # 3. 서스펜션 힘
         F_active = self._calculate_active_force(T_susp)
-        # Restoring forces pull the body downward (and wheel upward) when delta_s > 0
         F_spring = -self.params.K_spring * delta_s
 
         # 댐퍼 힘 (비대칭: 압축/리바운드 분리)
@@ -464,11 +427,8 @@ class SuspensionModel:
         F_gravity = self.unsprung_params.m_u * self.unsprung_params.g
         z_u_ddot = (F_z - F_s - F_gravity) / self.unsprung_params.m_u
 
-        # 타이어 최대 압축 한계 적용 (적분 전)
-        z_u_ddot = self._apply_tire_deflection_limits(delta_t, delta_t_dot, z_u_ddot)
-
         # 스트로크 한계 적용 (적분 전)
-        z_u_ddot = self._apply_stroke_limits(z_body_abs, delta_s, delta_s_dot, z_u_ddot)
+        z_u_ddot = self._apply_stroke_limits(delta_s, delta_s_dot, z_u_ddot)
 
         # 적분
         self.state.z_u_dot += z_u_ddot * dt
