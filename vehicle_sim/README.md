@@ -4,7 +4,86 @@
 
 ## Package exports
 
+<<<<<<< HEAD
 The package-level API currently exposes:
+=======
+```
+vehicle_sim/
+├── config/                      # 설정 파일
+│   └── vehicle_config.yaml     # 차량 파라미터 (TODO)
+├── models/                      # 차량 모델
+│   ├── vehicle_body/           # 차체 동역학
+│   │   └── vehicle_body.py
+│   └── e-corner/               # E-corner 모듈
+│       ├── e_corner.py
+│       ├── tire/               # 타이어 모델
+│       │   ├── tire_model.py
+│       │   ├── longitudinal/   # 종방향 타이어
+│       │   │   └── longitudinal_tire.py
+│       │   └── lateral/        # 횡방향 타이어
+│       │       └── lateral_tire.py
+│       ├── suspension/         # 서스펜션 모델
+│       │   └── suspension_model.py
+│       ├── drive/              # 구동 모터 모델
+│       │   └── drive_model.py
+│       ├── steering/           # 조향 모델
+│       │   └── steering_model.py
+│       └── config/             # 설정 관리
+│           └── corner_config.py
+├── controllers/                # 제어기
+│   ├── base_controller.py
+│   ├── driver_controller.py
+│   └── torque_vectoring_controller.py
+├── scenarios/                  # 시뮬레이션 시나리오
+│   ├── straight_line_scenario.py
+│   ├── constant_radius_scenario.py
+│   └── double_lane_change_scenario.py
+├── utils/                      # 유틸리티 함수
+│   ├── math_utils.py
+│   └── coordinate_transform.py
+├── simulator.py                # 메인 시뮬레이터
+└── main.py                     # 실행 진입점
+```
+
+## 주요 기능
+
+### 1. 차량 모델 (models/)
+- **VehicleBody**: 6-DOF 강체 동역학 모델
+- **ECorner**: 통합 코너 모듈 (타이어 + 서스펜션 + 구동 + 조향)
+
+### 2. 타이어 모델 (models/e-corner/tire/)
+- **종방향 타이어**: Magic Formula 기반 종방향 힘 계산
+- **횡방향 타이어**: Magic Formula 기반 횡방향 힘 계산
+- **복합 슬립**: Similarity method 또는 마찰 타원 방식
+
+### 3. 서스펜션 (models/e-corner/suspension/)
+- 스프링-댐퍼 모델
+- 비대칭 댐핑
+- 범프 스톱 및 이동 제한
+
+### 4. 구동 시스템 (models/e-corner/drive/)
+- 전기 모터 동역학
+- 토크-속도 특성
+- 회생 제동
+
+### 5. 조향 시스템 (models/e-corner/steering/)
+- 능동 조향 액추에이터
+- 각도 및 속도 제한
+- 셀프 얼라이닝 토크 피드백
+
+### 6. 제어기 (controllers/)
+- **DriverController**: 운전자 입력을 휠 명령으로 변환
+- **TorqueVectoringController**: 토크 배분 제어
+
+### 7. 시나리오 (scenarios/)
+- **직선 가속/제동**: 종방향 동역학 테스트
+- **정상원 선회**: 횡방향 동역학 테스트
+- **더블 레인 체인지**: 과도 응답 테스트
+
+## 사용 방법
+
+### 기본 실행
+>>>>>>> yusun
 
 ```python
 from vehicle_sim import VehicleBody, ECorner
