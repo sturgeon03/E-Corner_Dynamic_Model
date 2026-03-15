@@ -21,13 +21,3 @@ E-Corner_Dynamic_Model/
 
 ---
 
-## 설치
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e .
-```
-
-의존성: `numpy`, `pyyaml`, `matplotlib`
-
