@@ -34,19 +34,49 @@ E-Corner 차량 동역학 시뮬레이션 패키지.
 vehicle_sim/
 ├── models/
 │   ├── params/
-│   │   └── vehicle_standard.yaml   # 공용 파라미터
+│   │   └── vehicle_standard.yaml                          # 공용 파라미터
 │   ├── vehicle_body/
-│   │   └── vehicle_body.py         # 전체 차량 바디 모델
+│   │   ├── vehicle_body.py                                # 전체 차량 바디 모델
+│   │   └── test_debug/
+│   │       └── full_vehicle_simulation.ipynb              # 전체 차량 시뮬레이션 테스트
 │   └── e_corner/
-│       ├── e_corner.py             # 코너 통합 모델
-│       ├── steering/               # 조향 모델
-│       ├── drive/                  # 구동/제동 모델
-│       ├── suspension/             # 서스펜션 모델
-│       └── tire/                   # 타이어 모델 (종/횡)
-├── controllers/                    # 제어기 → controllers/README.md 참고
-├── scenarios/                      # 시나리오 입력 데이터
-├── utils/                          # 공용 유틸리티
-└── docs/                           # 문서용 이미지
+│       ├── e_corner.py                                    # 코너 통합 모델
+│       ├── test_debug/
+│       │   └── e_corner_model_test.ipynb                  # E-Corner 통합 테스트
+│       ├── steering/
+│       │   ├── steering_model.py
+│       │   ├── test_debug/
+│       │   │   └── steering_model_test.ipynb              # 조향 모델 테스트
+│       │   └── test_viz/
+│       │       └── steering_model_viz.ipynb               # 조향 모델 시각화
+│       ├── drive/
+│       │   ├── drive_model.py
+│       │   ├── brake_model.py
+│       │   └── test_debug/
+│       │       ├── drive_model_test.ipynb                 # 구동 모델 테스트
+│       │       └── brake_model_test.ipynb                 # 제동 모델 테스트
+│       ├── suspension/
+│       │   ├── suspension_model.py
+│       │   └── test_debug/
+│       │       └── suspension_model_test.ipynb            # 서스펜션 모델 테스트
+│       └── tire/
+│           ├── longitudinal/
+│           │   ├── longitudinal_tire.py
+│           │   └── test_debug/
+│           │       └── longitudinal_tire_test.ipynb       # 종방향 타이어 테스트
+│           └── lateral/
+│               ├── lateral_tire.py
+│               └── test_debug/
+│                   └── lateral_tire_test.ipynb            # 횡방향 타이어 테스트
+├── controllers/                                           # → controllers/README.md 참고
+├── scenarios/
+│   └── sinesweep/
+│       ├── sinesweep.py
+│       └── Log_Data/
+│           └── CM_Body_sinesweep.csv
+├── utils/
+│   └── config_loader.py                                   # YAML 파라미터 로더
+└── docs/                                                  # 문서용 이미지
 ```
 
 ---
@@ -93,8 +123,7 @@ corner.update(dt=0.001, T_steer=0.0, T_brk=0.0, T_Drv=0.0,
 
 ### 파라미터 (`vehicle_standard.yaml`)
 
-모든 서브모델이 공유하는 기본 파라미터 파일.
-`corner_offsets`로 FL/FR/RL/RR 각 코너의 CG 기준 위치(x, y)를 정의.
+모든 서브모델이 공유하는 차량 관련 파라미터 파일.
 
 ---
 
