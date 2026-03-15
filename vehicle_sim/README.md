@@ -1,382 +1,90 @@
 # vehicle_sim package
 
-`vehicle_sim` is the actual code package in this repository. It is organized around a full-vehicle model (`VehicleBody`) and an integrated corner model (`ECorner`).
+`vehicle_sim` is the Python package in this repository for E-corner-based vehicle dynamics simulation.
 
-## Package exports
+## Public package exports
 
-<<<<<<< HEAD
-The package-level API currently exposes:
-=======
-```
-vehicle_sim/
-├── config/                      # 설정 파일
-│   └── vehicle_config.yaml     # 차량 파라미터 (TODO)
-├── models/                      # 차량 모델
-│   ├── vehicle_body/           # 차체 동역학
-│   │   └── vehicle_body.py
-│   └── e-corner/               # E-corner 모듈
-│       ├── e_corner.py
-│       ├── tire/               # 타이어 모델
-│       │   ├── tire_model.py
-│       │   ├── longitudinal/   # 종방향 타이어
-│       │   │   └── longitudinal_tire.py
-│       │   └── lateral/        # 횡방향 타이어
-│       │       └── lateral_tire.py
-│       ├── suspension/         # 서스펜션 모델
-│       │   └── suspension_model.py
-│       ├── drive/              # 구동 모터 모델
-│       │   └── drive_model.py
-│       ├── steering/           # 조향 모델
-│       │   └── steering_model.py
-│       └── config/             # 설정 관리
-│           └── corner_config.py
-├── controllers/                # 제어기
-│   ├── base_controller.py
-│   ├── driver_controller.py
-│   └── torque_vectoring_controller.py
-├── scenarios/                  # 시뮬레이션 시나리오
-│   ├── straight_line_scenario.py
-│   ├── constant_radius_scenario.py
-│   └── double_lane_change_scenario.py
-├── utils/                      # 유틸리티 함수
-│   ├── math_utils.py
-│   └── coordinate_transform.py
-├── simulator.py                # 메인 시뮬레이터
-└── main.py                     # 실행 진입점
-```
-
-## 주요 기능
-
-### 1. 차량 모델 (models/)
-- **VehicleBody**: 6-DOF 강체 동역학 모델
-- **ECorner**: 통합 코너 모듈 (타이어 + 서스펜션 + 구동 + 조향)
-
-### 2. 타이어 모델 (models/e-corner/tire/)
-- **종방향 타이어**: Magic Formula 기반 종방향 힘 계산
-- **횡방향 타이어**: Magic Formula 기반 횡방향 힘 계산
-- **복합 슬립**: Similarity method 또는 마찰 타원 방식
-
-### 3. 서스펜션 (models/e-corner/suspension/)
-- 스프링-댐퍼 모델
-- 비대칭 댐핑
-- 범프 스톱 및 이동 제한
-
-### 4. 구동 시스템 (models/e-corner/drive/)
-- 전기 모터 동역학
-- 토크-속도 특성
-- 회생 제동
-
-### 5. 조향 시스템 (models/e-corner/steering/)
-- 능동 조향 액추에이터
-- 각도 및 속도 제한
-- 셀프 얼라이닝 토크 피드백
-
-### 6. 제어기 (controllers/)
-- **DriverController**: 운전자 입력을 휠 명령으로 변환
-- **TorqueVectoringController**: 토크 배분 제어
-
-### 7. 시나리오 (scenarios/)
-- **직선 가속/제동**: 종방향 동역학 테스트
-- **정상원 선회**: 횡방향 동역학 테스트
-- **더블 레인 체인지**: 과도 응답 테스트
-
-## 사용 방법
-
-### 기본 실행
->>>>>>> yusun
+The package-level API currently exports:
 
 ```python
-from vehicle_sim import VehicleBody, ECorner
-from vehicle_sim.controllers import (
+from vehicle_sim import (
+    VehicleBody,
+    ECorner,
     ActiveAntiRollBarController,
     ActiveAntiRollBarGains,
-    LateralYawRateTorqueController,
-    create_lateral_torque_stepper,
-)
-from vehicle_sim import scenarios
-```
-
-Package version: `0.1.0`
-
-## Core architecture
-
-The model hierarchy is:
-
-1. `VehicleBody` owns four corners labeled `FL`, `FR`, `RL`, `RR`.
-2. Each `ECorner` owns six submodels:
-   - `SteeringModel`
-   - `BrakeModel`
-   - `DriveModel`
-   - `SuspensionModel`
-   - `LongitudinalTireModel`
-   - `LateralTireModel`
-3. `VehicleBody.update(...)` computes wheel-center kinematics from the current body state.
-4. Each corner consumes actuator commands, wheel-center velocities, body motion, and road input.
-5. The four corner outputs are assembled into total body forces and moments, then integrated back into the vehicle state.
-
-In practical terms, the data flow is:
-
-- steering torque command -> steering angle
-- brake torque command -> clamp force
-- drive torque command + previous tire force + brake clamp force -> wheel speed
-- body motion + active suspension torque + road profile -> suspension force and vertical tire load
-- wheel speed + local wheel velocities + vertical load -> longitudinal and lateral tire forces
-- four-corner force set -> full-vehicle accelerations, rates, and positions
-
-## Main modules
-
-### `models/vehicle_body/vehicle_body.py`
-
-The full-vehicle model integrates a 12-state rigid-body representation:
-
-- position: `x`, `y`, `heave`
-- attitude: `roll`, `pitch`, `yaw`
-- linear velocity: `velocity_x`, `velocity_y`, `heave_dot`
-- angular velocity: `roll_rate`, `pitch_rate`, `yaw_rate`
-
-Important behavior:
-
-- loads default parameters from YAML when no explicit parameter object is passed
-- computes corner positions and wheel-center velocities from body motion
-- calls all four `ECorner` instances every step
-- assembles total forces and moments, including gravity handling and rotational dynamics
-- exposes `get_state_vector()` and `set_state_vector(...)` for direct state access
-
-### `models/e_corner/e_corner.py`
-
-`ECorner` is the integration point for one wheel station. Its update contract is:
-
-```python
-F_s, F_x_tire, F_y_tire = corner.update(
-    dt,
-    T_steer,
-    T_brk,
-    T_Drv,
-    T_susp,
-    V_wheel_x,
-    V_wheel_y,
-    X_body,
-    z_road=0.0,
-    z_road_dot=0.0,
-    direction=1,
+    scenarios,
 )
 ```
 
-Where:
+## Current package layout
 
-- `X_body` is `[heave, roll, pitch, heave_dot, roll_rate, pitch_rate]`
-- `direction=1` means forward and `direction=-1` means reverse
-- returned values are suspension force, longitudinal tire force, and lateral tire force for that corner
-
-The corner state stores:
-
-- `F_s`
-- `F_x_tire`
-- `F_y_tire`
-- `F_z`
-- `steering_angle`
-- `omega_wheel`
-
-### `models/e_corner/steering/steering_model.py`
-
-Steering is modeled as a dynamic actuator with:
-
-- inertia `J_cq`
-- damping `B_cq`
-- gear ratio from motor torque to steering-axis torque
-- asymmetric left/right wheel-angle limits loaded from YAML
-- steering-rate limits
-
-The model also feeds back self-aligning torque from the lateral tire model.
-
-### `models/e_corner/drive/`
-
-Drive and brake are split into two models:
-
-- `BrakeModel`: converts brake torque command into clamp force with actuator dynamics
-- `DriveModel`: updates wheel angular speed using drive torque, longitudinal tire force, wheel inertia, wheel damping, and braking effect
-
-The wheel and brake parameterization comes from the shared YAML file, including effective tire radius, wheel inertia, viscous drag, and brake hardware constants.
-
-### `models/e_corner/suspension/suspension_model.py`
-
-The suspension model carries the vertical dynamics around one corner, including:
-
-- sprung/unsprung interaction
-- spring force
-- split rebound/compression damper coefficients
-- active suspension force derived from suspension actuator torque
-- vertical tire stiffness and damping
-- stroke and tire-deflection limiting logic
-
-This module is also where the corner's static equilibrium quantities are established and reset.
-
-### `models/e_corner/tire/`
-
-Two separate tire models are used:
-
-- `longitudinal/longitudinal_tire.py`
-  - computes slip ratio from wheel angular speed and local wheel longitudinal velocity
-  - computes longitudinal force with a stiffness term and friction saturation
-- `lateral/lateral_tire.py`
-  - computes slip angle from local wheel velocities
-  - computes lateral force with cornering stiffness and friction saturation
-  - computes self-aligning torque via pneumatic trail
-
-### `controllers/active_anti_roll_bar_controller.py`
-
-This controller:
-
-- takes left/right suspension stroke and stroke-rate differences at front and rear
-- computes anti-roll moment with PD-like gains
-- maps the result to either per-corner force or suspension actuator torque
-
-### `controllers/lateral_feature/`
-
-This package now also contains an integrated lateral controller chain:
-
-- yaw-rate command -> yaw moment feedforward + PID feedback
-- yaw moment -> per-wheel lateral force allocation
-- per-wheel lateral force -> steering-angle feedforward
-- steering-angle tracking PID -> per-wheel steering torque command
-
-For simplified usage, use:
-
-- `LateralYawRateTorqueController` (object API)
-- `create_lateral_torque_stepper(...)` (one-line step function API)
-
-### `scenarios/`
-
-Despite the directory name, the current `scenarios` package is not yet a full scenario-runner framework. What is already implemented is:
-
-- `base_scenario.py`
-  - `TrajectoryPoint`
-  - `Trajectory`
-  - `path_to_trajectory(...)`
-- `paths/sine_path.py`
-  - sine-path generation
-  - curvature and curvature-rate visualization helpers
-
-This is useful for path definition and offline trajectory generation, but it does not yet replace a full simulation orchestration layer.
-
-### `utils/`
-
-Current utility status:
-
-- `config_loader.py`: implemented and used across the package
-- `math_utils.py`: placeholder
-- `coordinate_transform.py`: placeholder
-
-## Configuration model
-
-Most constructors accept `config_path`. If omitted, they load:
-
-- `vehicle_sim/models/params/vehicle_standard.yaml`
-
-The central YAML file currently contains:
-
-- `vehicle_spec`
-  - wheel geometry and inertia
-  - wheelbase, track width, axle load split
-  - corner offsets relative to CG
-- `brake`
-- `drive`
-- `suspension`
-- `steering`
-- `tire`
-- `unsprung`
-- `physics`
-- `vehicle_body`
-
-This makes the repository parameter-driven: most model instances can be rebuilt against a custom YAML file without editing Python code.
-
-## Minimal examples
-
-### Full vehicle step
-
-```python
-from vehicle_sim import VehicleBody
-
-vehicle = VehicleBody()
-
-corner_inputs = {
-    label: {
-        "T_steer": 0.0,
-        "T_brk": 0.0,
-        "T_Drv": 0.0,
-        "T_susp": 0.0,
-        "z_road": 0.0,
-        "z_road_dot": 0.0,
-    }
-    for label in vehicle.wheel_labels
-}
-
-vehicle.update(dt=0.001, corner_inputs=corner_inputs)
-print(vehicle.get_state_vector())
+```text
+vehicle_sim/
+  __init__.py
+  models/
+    vehicle_body/
+    e_corner/
+    params/vehicle_standard.yaml
+  controllers/
+    anti_roll_bar_controll/
+    yaw_rate_steering_controller/
+  scenarios/
+    sinesweep/
+  utils/
 ```
 
-### Single-corner step
+## Core modules
+
+### models
+
+- `VehicleBody`: full-vehicle rigid-body integration and 4-corner coupling.
+- `ECorner`: integrated corner model (steering, drive, brake, suspension, tire).
+- Shared default parameters are loaded from `models/params/vehicle_standard.yaml`.
+
+### controllers
+
+- `anti_roll_bar_controll/active_anti_roll_bar_controller.py`
+  - Active anti-roll bar controller with gain dataclass:
+    - `ActiveAntiRollBarController`
+    - `ActiveAntiRollBarGains`
+- `yaw_rate_steering_controller/`
+  - Yaw-rate-based steering controller package with:
+    - instance API (`YawRateSteeringController`)
+    - convenience API (`compute_steering_torque`, `compute_steering_angle`)
+    - config adapter and estimator/control-block modules
+    - example and smoke tests
+
+### scenarios
+
+- `scenarios/sinesweep/` contains logged-input sine-sweep helpers.
+- `from vehicle_sim import scenarios` exposes the scenarios package namespace.
+
+### utils
+
+- `utils/config_loader.py` is the shared YAML configuration loader.
+
+## Yaw-rate steering quick start
+
+Run from repository root:
+
+```bash
+python -m vehicle_sim.controllers.yaw_rate_steering_controller.examples.controller_usage_demo
+python vehicle_sim/controllers/yaw_rate_steering_controller/examples/controller_usage_demo.py
+python -m vehicle_sim.controllers.yaw_rate_steering_controller.tests.test_public_api
+```
+
+Recommended import style:
 
 ```python
-import numpy as np
-
-from vehicle_sim import ECorner
-
-corner = ECorner(corner_id="FL")
-
-X_body = np.zeros(6)
-
-F_s, F_x, F_y = corner.update(
-    dt=0.001,
-    T_steer=0.0,
-    T_brk=0.0,
-    T_Drv=0.0,
-    T_susp=0.0,
-    V_wheel_x=10.0,
-    V_wheel_y=0.0,
-    X_body=X_body,
-    z_road=0.0,
-    z_road_dot=0.0,
-    direction=1,
+from vehicle_sim.controllers.yaw_rate_steering_controller import (
+    YawRateSteeringController,
+    YawRateSteeringControllerOptions,
+    compute_steering_torque,
+    compute_steering_angle,
 )
-
-print(F_s, F_x, F_y)
-print(corner.get_state())
 ```
 
-### One-line lateral controller step
+## Notes
 
-```python
-from vehicle_sim import VehicleBody, create_lateral_torque_stepper
-
-vehicle = VehicleBody()
-step_lateral = create_lateral_torque_stepper(vehicle_body=vehicle, dt=0.001)
-
-# One-line control call (returns {"FL": T, "FR": T, "RR": T, "RL": T} in N*m)
-T_steer_cmd = step_lateral(yaw_rate_cmd=0.15)
-```
-
-## Conventions and assumptions
-
-- corner labels use `FL`, `FR`, `RL`, `RR`
-- vehicle geometry in the YAML uses body-frame corner offsets with `x` forward and `y` left
-- steering limits are asymmetric and depend on left/right side
-- several models rely on the central YAML as the source of truth rather than constructor-time hardcoding
-
-## Current limitations
-
-The codebase contains both implemented models and unfinished integration work. Important caveats:
-
-- `vehicle_sim/main.py` still refers to `VehicleSimulator`, `DriverController`, and scenario classes that are not present in the current tree
-- older README content in the repository described files and flows that no longer match the codebase
-- `models/e_corner/config/corner_config.py` is a scaffold and is not wired into the active model path
-- `utils/math_utils.py` and `utils/coordinate_transform.py` are TODO-only placeholders
-- many validation assets live in `test_debug/` notebooks rather than in a formal automated test suite
-
-## Suggested next documentation targets
-
-If this package keeps growing, the next useful documentation split would be:
-
-1. `models/README.md` for model equations and state conventions
-2. `scenarios/README.md` once scenario execution becomes a real subsystem
-3. `docs/` for derivations, validation reports, and parameter provenance
+- This README reflects the code currently present in this branch.
+- Deprecated references to removed controller modules were intentionally dropped.

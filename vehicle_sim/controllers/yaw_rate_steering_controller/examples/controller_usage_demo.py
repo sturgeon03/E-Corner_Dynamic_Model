@@ -1,10 +1,20 @@
 """Minimal example for production-style yaw-rate steering usage.
 
 Run:
+    python vehicle_sim/controllers/yaw_rate_steering_controller/examples/controller_usage_demo.py
     python -m vehicle_sim.controllers.yaw_rate_steering_controller.examples.controller_usage_demo
 """
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# Support direct script execution without requiring editable install.
+if __package__ in (None, ""):
+    repo_root = Path(__file__).resolve().parents[4]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
 
 from vehicle_sim.controllers.yaw_rate_steering_controller import (
     YawRateSteeringControllerOptions,
