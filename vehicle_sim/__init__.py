@@ -8,13 +8,6 @@ from .models import VehicleBody, ECorner
 from .controllers import (
     ActiveAntiRollBarController,
     ActiveAntiRollBarGains,
-    LateralOutput,
-    LateralRequest,
-    LateralSensorFrame,
-    LateralTorqueControllerBehavior,
-    LateralYawRateTorqueController,
-    build_lateral_torque_controller,
-    create_lateral_torque_stepper,
 )
 from . import scenarios
 
@@ -23,12 +16,5 @@ __all__ = [
     'ECorner',
     'ActiveAntiRollBarController',
     'ActiveAntiRollBarGains',
-    'LateralSensorFrame',
-    'LateralRequest',
-    'LateralOutput',
-    'LateralTorqueControllerBehavior',
-    'LateralYawRateTorqueController',
-    'build_lateral_torque_controller',
-    'create_lateral_torque_stepper',
     'scenarios'
 ]
