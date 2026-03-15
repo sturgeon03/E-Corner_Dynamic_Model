@@ -1,0 +1,49 @@
+﻿# yaw_rate_steering_controller PID 게인 파일
+# ----------------------------------------------------------------------------
+# 이 파일의 게인은 아래 3개 루프에 직접 사용됩니다.
+#
+# 1) yaw_rate_pid
+#    - 입력 오차: yaw_rate_ref - yaw_rate_meas
+#    - 출력: Mz_fb (yaw moment feedback)
+#    - 단위 감각: [N*m] / [rad/s]
+#
+# 2) fy_pid
+#    - 입력 오차: fy_cmd - fy_actual(또는 fy_est)
+#    - 출력: delta 보정량 [rad]
+#    - 단위 감각: [rad] / [N]
+#
+# 3) steering_pid
+#    - 입력 오차: delta_cmd - delta_meas
+#    - 출력: steering torque 보정
+#    - 단위 감각: [N*m] / [rad]
+#
+# 튜닝 권장 순서:
+#   (A) steering_pid -> (B) yaw_rate_pid -> (C) fy_pid
+#
+# 시작 팁:
+# - 진동/채터링이 보이면 kd를 먼저 낮추고, 필요 시 0으로 시작
+# - 적분 포화(느린 드리프트/오버슈트)가 보이면 ki를 낮추거나 0부터 재시작
+# - fy_pid는 값이 매우 작을 수 있음(단위 스케일 주의)
+# ----------------------------------------------------------------------------
+
+yaw_rate_pid:
+  # yaw-rate 추종 오차를 yaw moment 보정으로 변환
+  # kp: 즉각 오차 보정, ki: 정상상태 오차 제거, kd: 오차 변화율 감쇠
+  kp: 100.0
+  ki: 50.0
+  kd: 0.0
+
+fy_pid:
+  # Fy 오차를 조향각 보정량으로 변환
+  # enable_fy_feedback=true일 때만 유효
+  # fy_feedback_source=estimate를 사용하면 ay 품질/필터가 성능에 크게 영향
+  kp: 0.0000000044
+  ki: 0.0
+  kd: 0.0
+
+steering_pid:
+  # 조향각 추종 오차를 토크 보정으로 변환
+  # 채터링/고주파 토크가 보이면 먼저 kd를 낮추거나 0으로 유지
+  kp: 100.0
+  ki: 50.0
+  kd: 0.0
