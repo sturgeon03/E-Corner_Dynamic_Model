@@ -32,51 +32,42 @@ E-Corner 차량 동역학 시뮬레이션 패키지.
 
 ```text
 vehicle_sim/
-├── models/
-│   ├── params/
-│   │   └── vehicle_standard.yaml                          # 공용 파라미터
-│   ├── vehicle_body/
-│   │   ├── vehicle_body.py                                # 전체 차량 바디 모델
-│   │   └── test_debug/
-│   │       └── full_vehicle_simulation.ipynb              # 전체 차량 시뮬레이션 테스트
-│   └── e_corner/
-│       ├── e_corner.py                                    # 코너 통합 모델
-│       ├── test_debug/
-│       │   └── e_corner_model_test.ipynb                  # E-Corner 통합 테스트
-│       ├── steering/
-│       │   ├── steering_model.py
-│       │   ├── test_debug/
-│       │   │   └── steering_model_test.ipynb              # 조향 모델 테스트
-│       │   └── test_viz/
-│       │       └── steering_model_viz.ipynb               # 조향 모델 시각화
-│       ├── drive/
-│       │   ├── drive_model.py
-│       │   ├── brake_model.py
-│       │   └── test_debug/
-│       │       ├── drive_model_test.ipynb                 # 구동 모델 테스트
-│       │       └── brake_model_test.ipynb                 # 제동 모델 테스트
-│       ├── suspension/
-│       │   ├── suspension_model.py
-│       │   └── test_debug/
-│       │       └── suspension_model_test.ipynb            # 서스펜션 모델 테스트
-│       └── tire/
-│           ├── longitudinal/
-│           │   ├── longitudinal_tire.py
-│           │   └── test_debug/
-│           │       └── longitudinal_tire_test.ipynb       # 종방향 타이어 테스트
-│           └── lateral/
-│               ├── lateral_tire.py
-│               └── test_debug/
-│                   └── lateral_tire_test.ipynb            # 횡방향 타이어 테스트
-├── controllers/                                           # → controllers/README.md 참고
-├── scenarios/
-│   └── sinesweep/
-│       ├── sinesweep.py
-│       └── Log_Data/
-│           └── CM_Body_sinesweep.csv
-├── utils/
-│   └── config_loader.py                                   # YAML 파라미터 로더
-└── docs/                                                  # 문서용 이미지
+└── models/
+    ├── params/
+    │   └── vehicle_standard.yaml                          # 공용 파라미터
+    ├── vehicle_body/
+    │   ├── vehicle_body.py                                # 전체 차량 바디 모델
+    │   └── test_debug/
+    │       └── full_vehicle_simulation.ipynb              # 전체 차량 시뮬레이션 테스트
+    └── e_corner/
+        ├── e_corner.py                                    # 코너 통합 모델
+        ├── test_debug/
+        │   └── e_corner_model_test.ipynb                  # E-Corner 통합 테스트
+        ├── steering/
+        │   ├── steering_model.py
+        │   ├── test_debug/
+        │   │   └── steering_model_test.ipynb              # 조향 모델 테스트
+        │   └── test_viz/
+        │       └── steering_model_viz.ipynb               # 조향 모델 시각화
+        ├── drive/
+        │   ├── drive_model.py
+        │   ├── brake_model.py
+        │   └── test_debug/
+        │       ├── drive_model_test.ipynb                 # 구동 모델 테스트
+        │       └── brake_model_test.ipynb                 # 제동 모델 테스트
+        ├── suspension/
+        │   ├── suspension_model.py
+        │   └── test_debug/
+        │       └── suspension_model_test.ipynb            # 서스펜션 모델 테스트
+        └── tire/
+            ├── longitudinal/
+            │   ├── longitudinal_tire.py
+            │   └── test_debug/
+            │       └── longitudinal_tire_test.ipynb       # 종방향 타이어 테스트
+            └── lateral/
+                ├── lateral_tire.py
+                └── test_debug/
+                    └── lateral_tire_test.ipynb            # 횡방향 타이어 테스트
 ```
 
 ---
@@ -147,35 +138,3 @@ state = vehicle.state  # VehicleBodyState (x, y, heave, roll, pitch, yaw, ...)
 ### 파라미터 (`vehicle_standard.yaml`)
 
 모든 서브모델이 공유하는 차량 관련 파라미터 파일.
-
----
-
-## scenarios
-
-```text
-scenarios/
-└── sinesweep/
-    ├── sinesweep.py                    # 사인스윕 입력 생성기
-    └── Log_Data/
-        └── CM_Body_sinesweep.csv       
-```
-
-사인스윕 시나리오 입력을 생성하거나 로그 데이터를 불러오는 헬퍼 모듈.
-
----
-
-## utils
-
-```text
-utils/
-└── config_loader.py    # YAML 파라미터 로더
-```
-
-YAML 파라미터 파일을 읽어 dataclass로 변환하는 공용 로더.
-모든 모델이 파라미터 초기화에 내부적으로 사용.
-
----
-
-## controllers
-
-제어기 상세 설명은 [controllers/README.md](controllers/README.md) 참고.
