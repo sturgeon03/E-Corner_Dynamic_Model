@@ -1,6 +1,6 @@
 # Active Anti-Roll Bar Controller
 
-좌우 서스펜션 스트로크 차이를 입력으로 받아 코너별 안티롤 토크를 출력하는 제어기.
+코너별 서스펜션 스트로크 변위·속도를 입력으로 받아 좌우 롤 모멘트를 억제하는 제어기.
 
 **예제 노트북**: [aarb_onoff_test.ipynb](test_debug/aarb_onoff_test.ipynb)
 **제어기 코드**: [controller.py](controller.py)
@@ -10,24 +10,26 @@
 
 ## 메서드
 
-### `update(delta_s, delta_s_dot, output_type="torque") -> Dict[str, float]`
+### `update(state, output_type="torque", enabled=True) -> Dict[str, float]`
 
 매 스텝 제어 토크/힘 계산.
 
-| 인자 | 타입 | 단위 | 설명 |
-|---|---|---|---|
-| `delta_s` | `{"FL", "FR", "RL", "RR": float}` | m | 코너별 서스펜션 스트로크 |
-| `delta_s_dot` | `{"FL", "FR", "RL", "RR": float}` | m/s | 코너별 스트로크 변화율 |
-| `output_type` | `"torque"` \| `"force"` | - | 출력 단위 선택 |
+| 인자 | 타입 | 설명 |
+|---|---|---|
+| `state` | `dict` | 코너별 스트로크 변위(`stroke` [m])·속도(`stroke_rate` [m/s]) |
+| `output_type` | `"torque"` \| `"force"` | 출력 단위 선택 |
+| `enabled` | `bool` | `False`이면 토크 출력 없이 0 반환 |
 
 **출력**: 코너별 토크 `[N*m]` 또는 힘 `[N]`
 
 ```python
-T_susp = aarb.update(
-    delta_s={"FL": ..., "FR": ..., "RL": ..., "RR": ...},
-    delta_s_dot={"FL": ..., "FR": ..., "RL": ..., "RR": ...},
-    output_type="torque",
-)
+state = {
+    "FL": {"stroke": ..., "stroke_rate": ...},
+    "FR": {"stroke": ..., "stroke_rate": ...},
+    "RL": {"stroke": ..., "stroke_rate": ...},
+    "RR": {"stroke": ..., "stroke_rate": ...},
+}
+T_susp = aarb.update(state, enabled=True)
 # {"FL": T_FL, "FR": T_FR, "RL": T_RL, "RR": T_RR}
 ```
 

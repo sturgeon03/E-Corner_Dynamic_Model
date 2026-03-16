@@ -1,6 +1,6 @@
 """
 Active Anti-Roll Bar (AARB) Controller
-좌우 서스펜션 스트로크 차(Δs)를 입력으로 받아 anti-roll 토크를 생성하는 패시브 ARB 철학 기반 제어기
+코너별 서스펜션 스트로크 높이를 입력으로 받아 좌우 롤 모멘트를 억제하는 제어기
 """
 
 from dataclasses import dataclass
@@ -34,21 +34,22 @@ class ActiveAntiRollBarController:
     """
     Active Anti-Roll Bar (AARB) Controller
 
-    패시브 스태빌라이저 바 철학을 따라, 좌우 서스펜션 스트로크 차이를
-    입력으로 받아 anti-roll 모멘트를 생성하고 좌우에 힘으로 분배.
+    코너별 서스펜션 스트로크 높이(delta_s)를 입력으로 받아
+    전·후륜 좌우 높이차로부터 anti-roll 모멘트를 계산하고
+    각 코너에 힘(또는 토크)으로 분배한다.
 
     제어 법칙 (축별):
-        Δs_front = delta_s_FR - delta_s_FL
-        Δs_rear = delta_s_RR - delta_s_RL
+        Δs_front = delta_s_FL - delta_s_FR
+        Δs_rear  = delta_s_RL - delta_s_RR
 
         M_arb_front = k_arb_front * Δs_front + c_arb_front * Δs_front_dot
-        M_arb_rear = k_arb_rear * Δs_rear + c_arb_rear * Δs_rear_dot
+        M_arb_rear  = k_arb_rear  * Δs_rear  + c_arb_rear  * Δs_rear_dot
 
-    좌우 힘 분배:
+    코너 힘 분배:
         F_R = +M_arb / track_width
         F_L = -M_arb / track_width
 
-    입력: 각 코너의 delta_s, delta_s_dot
+    입력: 코너별 SuspensionState (delta_s [m], delta_s_dot [m/s])
     출력: 코너별 F_arb [N] 또는 T_susp [N*m]
     """
 
@@ -87,36 +88,34 @@ class ActiveAntiRollBarController:
 
     def update(
         self,
-        delta_s: Dict[str, float],
-        delta_s_dot: Dict[str, float],
+        state: Dict[str, object],
         output_type: str = "torque",
+        enabled: bool = True,
     ) -> Dict[str, float]:
         """
-        좌우 스트로크 차 기반 ARB 힘/토크 계산
+        코너별 스트로크 높이로부터 ARB 힘/토크를 계산한다.
 
         Args:
-            delta_s: 각 코너의 서스펜션 스트로크 {corner: delta_s [m]}
-                     {"FL": ..., "FR": ..., "RL": ..., "RR": ...}
-            delta_s_dot: 각 코너의 스트로크 속도 {corner: delta_s_dot [m/s]}
-            output_type: "force" 또는 "torque" (기본: "torque")
+            state:       코너별 스트로크 변위·속도
+                         {"FL": {"stroke": [m], "stroke_rate": [m/s]}, "FR": ..., ...}
+            output_type: 출력 단위 — "force" [N] 또는 "torque" [N*m]
+            enabled:     False 이면 토크를 출력하지 않고 0을 반환
 
         Returns:
-            output: 코너별 힘 또는 토크
-                    {"FL": value, "FR": value, "RL": value, "RR": value}
-                    - output_type="force": [N]
-                    - output_type="torque": [N*m]
+            {"FL": value, "FR": value, "RL": value, "RR": value}
         """
-        # 1. 좌우 스트로크 차 계산
-        # Δs_front = delta_s_FR - delta_s_FL (오른쪽이 더 압축되면 양수)
-        # Δs_rear = delta_s_RR - delta_s_RL
-        self.delta_s_front = delta_s["FL"] - delta_s["FR"]
-        self.delta_s_rear = delta_s["RL"] - delta_s["RR"]
+        if not enabled:
+            self.reset()
+            return {c: 0.0 for c in ("FL", "FR", "RL", "RR")}
 
-        delta_s_dot_front = delta_s_dot["FL"] - delta_s_dot["FR"]
-        delta_s_dot_rear = delta_s_dot["RL"] - delta_s_dot["RR"]
+        # 전·후륜 좌우 스트로크 높이차 및 속도차
+        self.delta_s_front = state["FL"]["stroke"] - state["FR"]["stroke"]
+        self.delta_s_rear  = state["RL"]["stroke"] - state["RR"]["stroke"]
 
-        # 2. ARB 모멘트 계산 (PD 제어)
-        # M_arb = k * Δs + c * Δs_dot
+        delta_s_dot_front = state["FL"]["stroke_rate"] - state["FR"]["stroke_rate"]
+        delta_s_dot_rear  = state["RL"]["stroke_rate"] - state["RR"]["stroke_rate"]
+
+        # 높이차·속도차로부터 축별 ARB 모멘트 계산 (M = k·Δs + c·Δs_dot)
         self.M_arb_front = (
             self.gains.k_arb_front * self.delta_s_front
             + self.gains.c_arb_front * delta_s_dot_front
@@ -126,9 +125,7 @@ class ActiveAntiRollBarController:
             + self.gains.c_arb_rear * delta_s_dot_rear
         )
 
-        # 3. 좌우 힘 분배
-        # F_R = +M_arb / track (오른쪽이 압축되면 오른쪽을 밀어 올림)
-        # F_L = -M_arb / track (왼쪽을 눌러서 균형 유지)
+        # 모멘트를 트랙 폭으로 나눠 좌우 코너 힘으로 분배 (F = ±M / track)
         track = self.gains.track_width
 
         F_arb = {
@@ -138,7 +135,6 @@ class ActiveAntiRollBarController:
             "RR": +self.M_arb_rear / track,
         }
 
-        # 4. 출력 타입에 따라 변환
         if output_type == "force":
             return F_arb
         elif output_type == "torque":
