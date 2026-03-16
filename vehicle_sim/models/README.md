@@ -12,22 +12,6 @@ E-Corner 차량 동역학 시뮬레이션 패키지.
 
 ---
 
-## 구성요소 입출력 요약
-
-| 그룹 | 구성요소 | 입력 | 상태 | 출력 |
-|---|---|---|---|---|
-| Actuation | Brake Actuator | `T_brk` | `F*_clamp` | `F_clamp` |
-| Actuation | Drive System | `T_drv`, `F_clamp` | `ω` | `ω` |
-| Actuation | Steer System | `T_str`, `T_align` | `δ`, `δ̇` | `δ` |
-| Suspension | Suspension System | `T_susp`, `z_road` | `z_u`, `ż_u` | `F_s`, `F_z` |
-| Tire models | Longitudinal Tire Dynamics | `ω`, `V_wx`, `F_z` | — | `F_x` |
-| Tire models | Lateral Tire Dynamics | `V_wx`, `V_wy`, `F_z` | — | `F_y`, `M_z` |
-| Vehicle body | Vehicle Body Dynamics | `F_x`, `F_y`, `F_s`, `δ` | `X_body` | `X_body`, `V_wx`, `V_wy` |
-
-차체 상태 벡터: `X_body = [z, φ, θ, ż, φ̇, θ̇]`
-
----
-
 ## 패키지 구조
 
 ```text
@@ -42,30 +26,30 @@ vehicle_sim/
     └── e_corner/
         ├── e_corner.py                                    # 코너 통합 모델
         ├── test_debug/
-        │   └── e_corner_model_test.ipynb                  # E-Corner 통합 테스트
+        │   └── e_corner_model_test.ipynb                  # 단일 코너 통합 테스트
         ├── steering/
-        │   ├── steering_model.py
+        │   ├── steering_model.py                              # 조향 모터 토크 → 조향각
         │   ├── test_debug/
         │   │   └── steering_model_test.ipynb              # 조향 모델 테스트
         │   └── test_viz/
         │       └── steering_model_viz.ipynb               # 조향 모델 시각화
         ├── drive/
-        │   ├── drive_model.py
-        │   ├── brake_model.py
+        │   ├── drive_model.py                                 # 구동 토크 → 휠 각속도
+        │   ├── brake_model.py                                 # 제동 토크 → 클램핑력
         │   └── test_debug/
         │       ├── drive_model_test.ipynb                 # 구동 모델 테스트
         │       └── brake_model_test.ipynb                 # 제동 모델 테스트
         ├── suspension/
-        │   ├── suspension_model.py
+        │   ├── suspension_model.py                            # 차체 자세 → 수직력
         │   └── test_debug/
         │       └── suspension_model_test.ipynb            # 서스펜션 모델 테스트
         └── tire/
             ├── longitudinal/
-            │   ├── longitudinal_tire.py
+            │   ├── longitudinal_tire.py                   # 슬립률 → 종방향 힘
             │   └── test_debug/
             │       └── longitudinal_tire_test.ipynb       # 종방향 타이어 테스트
             └── lateral/
-                ├── lateral_tire.py
+                ├── lateral_tire.py                        # 슬립각 → 횡방향 힘
                 └── test_debug/
                     └── lateral_tire_test.ipynb            # 횡방향 타이어 테스트
 ```
@@ -121,3 +105,19 @@ state = vehicle.state  # VehicleBodyState (x, y, heave, roll, pitch, yaw, ...)
 ### 파라미터 (`vehicle_standard.yaml`)
 
 모든 서브모델이 공유하는 차량 관련 파라미터 파일.
+
+---
+
+## 구성요소 입출력 요약
+
+| 그룹 | 구성요소 | 입력 | 상태 | 출력 |
+|---|---|---|---|---|
+| Actuation | Brake Actuator | `T_brk` | `F*_clamp` | `F_clamp` |
+| Actuation | Drive System | `T_drv`, `F_clamp` | `ω` | `ω` |
+| Actuation | Steer System | `T_str`, `T_align` | `δ`, `δ̇` | `δ` |
+| Suspension | Suspension System | `T_susp`, `z_road` | `z_u`, `ż_u` | `F_s`, `F_z` |
+| Tire models | Longitudinal Tire Dynamics | `ω`, `V_wx`, `F_z` | — | `F_x` |
+| Tire models | Lateral Tire Dynamics | `V_wx`, `V_wy`, `F_z` | — | `F_y`, `M_z` |
+| Vehicle body | Vehicle Body Dynamics | `F_x`, `F_y`, `F_s`, `δ` | `X_body` | `X_body`, `V_wx`, `V_wy` |
+
+차체 상태 벡터: `X_body = [z, φ, θ, ż, φ̇, θ̇]`
