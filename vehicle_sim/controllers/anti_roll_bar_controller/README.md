@@ -1,6 +1,6 @@
 # Active Anti-Roll Bar Controller
 
-좌우 서스펜션 스트로크 차이를 입력으로 받아 코너별 안티롤 토크를 출력하는 PD 제어기.
+좌우 서스펜션 스트로크 차이를 입력으로 받아 코너별 안티롤 토크를 출력하는 제어기.
 
 **예제 노트북**: [aarb_onoff_test.ipynb](test_debug/aarb_onoff_test.ipynb)
 **제어기 코드**: [controller.py](controller.py)

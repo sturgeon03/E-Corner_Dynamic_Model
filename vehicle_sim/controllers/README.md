@@ -36,5 +36,5 @@ controllers/
 
 | 제어기 | 설명 | 상세 |
 |---|---|---|
-| Active Anti-Roll Bar Controller | 좌우 서스펜션 스트로크 차 기반 PD 안티롤 토크 제어기 | [README](anti_roll_bar_controller/README.md) |
+| Active Anti-Roll Bar Controller | 좌우 서스펜션 스트로크 차 기반 안티롤 토크 제어기 | [README](anti_roll_bar_controller/README.md) |
 | Yaw Rate Steering Controller | 목표 yaw rate 기반 통합 조향 제어기 | [README](yaw_rate_steering_controller/README.md) |
