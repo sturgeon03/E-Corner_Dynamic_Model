@@ -1,204 +1,126 @@
-﻿# Yaw Rate Steering Controller
+# Yaw Rate Steering Controller
 
-??臾몄꽌??`vehicle_sim/controllers/README.md`???곸쐞 媛쒖슂瑜?諛섎났?섏? ?딄퀬,  
-`yaw_rate_steering_controller`瑜??ㅼ젣濡?遺숈뿬???곕뒗 諛⑸쾿??吏묒쨷???ъ슜 媛?대뱶?낅땲??
+차량 상태와 요레이트 지령을 입력으로 받아 코너별 조향 토크를 계산하는 제어기.
 
-## ??臾몄꽌??踰붿쐞
+**예제 노트북**: [controller_symmetric_internal_signals_test.ipynb](test_debug/controller_symmetric_internal_signals_test.ipynb)
+**제어기 코드**: [controller.py](controller.py)
+**게인 파라미터**: [controller_gains.yaml](param/controller_gains.yaml)
+**옵션 파라미터**: [controller_options.example.yaml](param/controller_options.example.yaml)
 
-- ?곸쐞 臾몄꽌?먯꽌 ?대? ?ㅻ챸???대뜑 ?몃━/紐⑤뱢 媛쒖슂???앸왂
-- ?ш린?쒕뒗 ?꾨옒 3媛吏留??ㅻ８
-  - ?낅젰/異쒕젰 怨꾩빟???ㅼ궗??愿?먯뿉??紐낇솗???뺣━
-  - 媛앹껜 API/?⑥닔 API瑜??몄젣 ?대뼸寃??곕뒗吏 ?뺣━
-  - YAML 紐⑤뱶 ?ㅼ젙, 鍮좊Ⅸ 寃利??명듃遺? ?몃윭釉붿뒋???뺣━
+---
 
-## 鍮좊Ⅸ ?쒖옉
+## 메서드
 
-### 1) import 洹쒖튃
+### `compute_torque_command(state, ref) -> Dict[str, float]`
 
-??긽 ?⑦궎吏 猷⑦듃?먯꽌 import ?섏꽭??
+매 스텝 조향 토크 계산.
 
-```python
-from vehicle_sim.controllers.yaw_rate_steering_controller import (
-    YawRateSteeringController,
-    YawRateSteeringControllerOptions,
-    compute_steering_torque,
-    compute_steering_angle,
-)
-```
+| 인자 | 타입 | 설명 |
+|---|---|---|
+| `state` | `dict` | 차량 상태 (yaw rate, 속도, 조향각, 타이어 힘 등) |
+| `ref` | `dict` | 요레이트 지령 (`yaw_rate` [rad/s]) |
 
-`control_blocks/`, `estimators/` ?대? ?뚯씪 吏곸젒 import??鍮꾧텒?μ엯?덈떎.
-
-### 2) 媛앹껜 API濡??쒖옉
-
-```python
-from vehicle_sim.controllers.yaw_rate_steering_controller import (
-    YawRateSteeringController,
-    YawRateSteeringControllerOptions,
-)
-
-options = YawRateSteeringControllerOptions(
-    dt=0.01,
-    enable_yaw_feedback=True,
-    enable_fy_feedback=False,
-    enable_steer_feedback=True,
-    enable_estimator=False,
-)
-
-controller = YawRateSteeringController(options)
-```
-
-### 3) ???ㅽ뀦 ?몄텧
+**출력**: 코너별 조향 토크 `{"FL": ..., "FR": ..., "RL": ..., "RR": ...}` [N·m]
 
 ```python
 state = {
-    "yaw_rate": 0.05,
-    "vx": 8.0,
-    "steering_angle": {"FL": 0.0, "FR": 0.0, "RR": 0.0, "RL": 0.0},
-    "fy_tire": {"FL": 0.0, "FR": 0.0, "RR": 0.0, "RL": 0.0},
-    "fx_tire": {"FL": 0.0, "FR": 0.0, "RR": 0.0, "RL": 0.0},
-    "ay": 0.0,
+    "yaw_rate":       float,                              # 현재 yaw rate [rad/s]
+    "vx":             float,                              # 종방향 속도 [m/s]
+    "steering_angle": {"FL": ..., "FR": ..., "RL": ..., "RR": ...},  # [rad]
+    "fy_tire":        {"FL": ..., "FR": ..., "RL": ..., "RR": ...},  # [N]
+    "fx_tire":        {"FL": ..., "FR": ..., "RL": ..., "RR": ...},  # [N]
+    "fz":             {"FL": ..., "FR": ..., "RL": ..., "RR": ...},  # [N]
+    "ay":             float,                              # 횡방향 가속도 [m/s²]
+    "delta_dot":      {"FL": ..., "FR": ..., "RL": ..., "RR": ...},  # [rad/s]
+    "steering_torque_axis": {"FL": ..., "FR": ..., "RL": ..., "RR": ...},  # [N·m]
+    "alpha":          {"FL": ..., "FR": ..., "RL": ..., "RR": ...},  # slip angle [rad]
 }
-ref = {"yaw_rate": 0.2}
+reference = {"yaw_rate": 0.1}
 
-torque_cmd = controller.compute_torque_command(state, ref)
-angle_cmd = controller.compute_angle_command(state, ref)
+steer_trq = controller.compute_torque_command(state, reference)
+# {"FL": T_FL, "FR": T_FR, "RL": T_RL, "RR": T_RR}
 ```
 
-## ?낅젰/異쒕젰 怨꾩빟 (?ㅼ궗??湲곗?)
+### `compute_angle_command(state, ref) -> Dict[str, float]`
 
-### ?꾩닔 `state`
+조향각 지령만 계산 (토크 변환 없이).
 
-| ??| ???| ?⑥쐞 | ?ㅻ챸 |
+**출력**: 코너별 조향각 `[rad]`
+
+### `reset()`
+
+내부 PID·추정기 상태를 0으로 초기화.
+
+---
+
+## 파라미터
+
+### 게인 (`controller_gains.yaml`)
+
+| 파라미터 | 기본값 | 단위 | 설명 |
 |---|---|---|---|
-| `yaw_rate` | `float` | rad/s | ?꾩옱 yaw rate 痢≪젙媛?|
-| `vx` | `float` | m/s | ?꾩옱 醫낅갑???띾룄 |
-| `steering_angle` | `dict` | rad | 媛?諛뷀?議고뼢媛?(`FL/FR/RR/RL`) |
+| `yaw_rate_pid.kp` | 100.0 | N·m/(rad/s) | yaw rate → Mz 비례 게인 |
+| `yaw_rate_pid.ki` | 50.0 | N·m/(rad/s·s) | yaw rate → Mz 적분 게인 |
+| `yaw_rate_pid.kd` | 10.0 | N·m·s/(rad/s) | yaw rate → Mz 미분 게인 |
+| `fy_pid.kp` | 4.4e-9 | rad/N | Fy 오차 → 조향각 보정 비례 게인 |
+| `steering_pid.kp` | 100.0 | N·m/rad | 조향각 → 토크 비례 게인 |
+| `steering_pid.ki` | 50.0 | N·m/(rad·s) | 조향각 → 토크 적분 게인 |
+| `steering_pid.kd` | 10.0 | N·m·s/rad | 조향각 → 토크 미분 게인 |
 
-### ?꾩닔 `ref`
+### 제어기 모드 (`controller_options.example.yaml`)
 
-| ??| ???| ?⑥쐞 | ?ㅻ챸 |
-|---|---|---|---|
-| `yaw_rate` | `float` | rad/s | 紐⑺몴 yaw rate |
-
-### ?좏깮 `state` (?듭뀡???곕씪 ?ъ슜)
-
-| ??| ?ъ슜 議곌굔 | ?ㅻ챸 |
-|---|---|---|
-| `fy_tire` | Fy feedback ?먮뒗 異붿젙湲?寃利?| 諛뷀대퀎 ?〓젰 痢≪젙媛?|
-| `fx_tire` | yaw moment allocator ?낅젰 | 諛뷀대퀎 醫낅젰 痢≪젙媛?|
-| `ay` | `fy_feedback_source=estimate` ?먮뒗 slip 異붿젙 | ?↔??띾룄 |
-| `delta_dot` | 異붿젙湲??ъ슜 ??| 議고뼢媛??띾룄 痢≪젙媛?|
-| `steering_torque_axis` | B 異붿젙湲??ъ슜 ??| 異?湲곗? 議고뼢 ?좏겕 |
-| `alpha` | slip estimator 誘몄궗????| 諛뷀?slip angle ?낅젰 |
-
-### 異쒕젰
-
-- `compute_torque_command(...)`  
-  - `{"FL": ..., "FR": ..., "RR": ..., "RL": ...}` ?뺥깭 議고뼢 紐⑦꽣 ?좏겕 `[N*m]`
-- `compute_angle_command(...)`  
-  - 媛숈? ??援ъ“??議고뼢媛?紐낅졊 `[rad]`
-
-## API ?좏깮 湲곗?
-
-### 媛앹껜 API (沅뚯옣)
-
-- ?쒖뼱 猷⑦봽?먯꽌 ?곹깭瑜??곗냽?곸쑝濡??좎??댁빞 ?????ъ슜
-- ?대? PID/異붿젙湲??곹깭瑜??꾨젅??媛??좎?
-
-```python
-torque_cmd = controller.compute_torque_command(state, ref)
-error_debug = controller.compute_error_debug(state, ref)
-```
-
-### ?⑥닔 API (鍮좊Ⅸ 泥댄겕??
-
-- ?명듃遺??⑥쐞 ?뺤씤泥섎읆 利됱떆 怨꾩궛留??꾩슂?????ъ슜
-- `reset=True`濡?怨듭쑀 ?몄뒪?댁뒪 ?곹깭 珥덇린??媛??
-```python
-from vehicle_sim.controllers.yaw_rate_steering_controller import (
-    compute_steering_torque,
-    compute_steering_angle,
-)
-
-torque_cmd = compute_steering_torque(state, ref, reset=True)
-angle_cmd = compute_steering_angle(state, ref, reset=True)
-```
-
-## ?붾쾭洹?異쒕젰 ?댁꽍
-
-`compute_error_debug(...)`??`debug`?먮뒗 ?꾨옒 ?듭떖 ?좏샇媛 ?ㅼ뼱?듬땲??
-
-| ??| ?섎? |
+| 모드 | 설명 |
 |---|---|
-| `Mz_ff`, `Mz_fb`, `Mz_cmd` | yaw moment feedforward/feedback/?⑹꽦 |
-| `Fy_total_cmd`, `Fy_cmd` | ?꾩껜/諛뷀대퀎 紐⑺몴 ?〓젰 |
-| `delta_cmd` | 諛뷀대퀎 紐⑺몴 議고뼢媛?|
-| `T_align_cmd` | ?쇰씪???좏겕 異붿젙 |
-| `T_steer_ff_motor`, `T_steer_ff_axis` | feedforward ?좏겕 |
-| `estimator` | B, C_alpha 異붿젙 ?곹깭 諛??낅뜲?댄듃 ?щ? |
+| `ff` | Feedforward only |
+| `ff_fb` | Feedforward + yaw/Fy/steer feedback |
+| `ff_fb_ls` | Feedback + B·C_α 추정기 (최고 성능) |
 
-?쒕떇???뚮뒗 蹂댄넻 `Mz_cmd`, `delta_cmd`, `T_steer_ff_motor`, `estimator`瑜?癒쇱? 遊낅땲??
+---
 
-## YAML ?ㅼ젙?쇰줈 ?ㅽ뻾?섍린
+## 제어 수식
 
-`param/controller_options.example.yaml` 湲곕컲?쇰줈 紐⑤뱶/?듭뀡??遺덈윭?????덉뒿?덈떎.
+**Feedforward — yaw moment**
 
-```python
-from vehicle_sim.controllers.yaw_rate_steering_controller import (
-    load_controller_runtime_config,
-    YawRateSteeringController,
-)
+$$
+M_{z,\text{ff}} = I_z \cdot \dot{r}_\text{ref}
+$$
 
-runtime_cfg = load_controller_runtime_config(
-    "vehicle_sim/controllers/yaw_rate_steering_controller/param/controller_options.example.yaml"
-)
+**Feedback — yaw rate PID**
 
-controller = YawRateSteeringController(
-    options=runtime_cfg.options,
-    vehicle_config_path=runtime_cfg.vehicle_config_path,
-    gains_path=runtime_cfg.gains_path,
-)
+$$
+M_{z,\text{fb}} = k_p \cdot e_r + k_i \int e_r \, dt + k_d \dot{e}_r, \quad e_r = r_\text{ref} - r
+$$
+
+**합산 yaw moment → 코너별 횡력 배분**
+
+$$
+M_{z,\text{cmd}} = M_{z,\text{ff}} + M_{z,\text{fb}}
+$$
+
+$$
+F_{y,i} = \frac{M_{z,\text{cmd}}}{N_\text{wheels}} \cdot w_i
+$$
+
+**횡력 → 조향각 변환 (선형 타이어)**
+
+$$
+\delta_i = \frac{F_{y,i}}{C_{\alpha,i}}
+$$
+
+**조향각 → 토크 (steering PID)**
+
+$$
+T_{\text{steer},i} = k_p \cdot (\delta_{i,\text{cmd}} - \delta_{i,\text{meas}}) + k_i \int (\cdot) \, dt + k_d \frac{d(\cdot)}{dt}
+$$
+
+```text
+e_r        = yaw_rate_ref - yaw_rate_meas
+Mz_fb      = yaw_rate_pid(e_r)
+Mz_cmd     = Mz_ff + Mz_fb
+
+Fy_cmd[i]  = yaw_moment_allocator(Mz_cmd, state)
+delta_cmd[i] = Fy_cmd[i] / C_alpha[i]
+
+e_delta[i]   = delta_cmd[i] - steering_angle[i]
+T_steer[i]   = steering_pid(e_delta[i])
 ```
-
-### 紐⑤뱶 ?붿빟
-
-| 紐⑤뱶 | ?ㅻ챸 | 沅뚯옣 ?곹솴 |
-|---|---|---|
-| `ff` | feedforward only | 踰좎씠?ㅻ씪???뺤씤 |
-| `ff_fb` | yaw/Fy/steer feedback | ?쇰컲 ?쒖뼱 猷⑦봽 |
-| `ff_fb_ls` | feedback + 異붿젙湲?| ?뚮씪誘명꽣 蹂??????ㅽ뿕 |
-
-## 寃利?寃쎈줈
-
-### 鍮좊Ⅸ ?ㅽ뻾
-
-```bash
-python -m vehicle_sim.controllers.yaw_rate_steering_controller.examples.controller_usage_demo
-python vehicle_sim/controllers/yaw_rate_steering_controller/examples/controller_usage_demo.py
-```
-
-### ?명듃遺?湲곕컲 ?뚮’ ?뺤씤
-
-- [test_debug/controller_quick_plot.ipynb](./test_debug/controller_quick_plot.ipynb)
-- `controller_usage_demo` ?먮쫫???뺤옣???ъ슜 ?덉젣 ?명듃遺?- ?⑥씪 ?몄텧 + ?ъ슜???뺤쓽 `yaw_rate_ref` ?곗냽 ?몄텧 + `Mz_cmd`, `delta_cmd`, `T_steer` ?뚮’ ?뺤씤
-
-## ?먯＜ 諛쒖깮?섎뒗 臾몄젣
-
-### `ModuleNotFoundError: No module named 'vehicle_sim'`
-
-- ??μ냼 猷⑦듃?먯꽌 ?ㅽ뻾?섍굅?? ?꾨옒泥섎읆 紐⑤뱢 ?ㅽ뻾 諛⑹떇???ъ슜?섏꽭??
-
-```bash
-python -m vehicle_sim.controllers.yaw_rate_steering_controller.examples.controller_usage_demo
-```
-
-### 異쒕젰???嫄곕굹 吏꾨룞????寃쎌슦
-
-1. `controller_gains.yaml`?먯꽌 `steering_pid.kp/kd`瑜?癒쇱? ??떠 ?뺤씤
-2. `yaw_rate_pid.ki`瑜???떠 ?곷텇 ?꾩쟻 ?곹뼢 ?뺤씤
-3. `dt`? ?ㅼ젣 ?쒖뼱 猷⑦봽 二쇨린媛 留욌뒗吏 ?먭?
-
-### 異붿젙湲??낅뜲?댄듃媛 湲곕?? ?ㅻ? ??
-- `options.enable_estimator`, `enable_b_estimator`, `enable_c_alpha_estimator` ?뺤씤
-- ?낅젰 `state`??`delta_dot`, `steering_torque_axis`, `alpha` ?쒓났 ?щ? ?뺤씤
-
