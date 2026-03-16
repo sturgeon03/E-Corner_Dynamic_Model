@@ -104,18 +104,27 @@ def measure_vehicle_outputs(vehicle: VehicleBody) -> dict:
 def build_yaw_sim(runtime_cfg, vehicle_config_path: str, scenario) -> tuple:
     """제어기·차량 모델을 초기화하고 반환한다.
 
+    두 컨트롤러 인스턴스를 분리하여 반환한다.
+    - steer : compute_steer_command  — 조향각 지령
+    - trq   : compute_torque_command — 조향 토크 지령
+
     Returns:
-        (controller, body, wheels)
+        (steer, trq, body, wheels)
     """
-    controller = YawRateSteeringController(
-        options=deepcopy(runtime_cfg.options),
-        vehicle_config_path=vehicle_config_path,
-        gains_path=runtime_cfg.gains_path,
-    )
-    body = VehicleBody(config_path=vehicle_config_path)
+    def _make_ctrl(output_mode: str):
+        return YawRateSteeringController(
+            options=deepcopy(runtime_cfg.options),
+            vehicle_config_path=vehicle_config_path,
+            gains_path=runtime_cfg.gains_path,
+            output_mode=output_mode,
+        )
+
+    steer = _make_ctrl("steer")
+    trq   = _make_ctrl("torque")
+    body  = VehicleBody(config_path=vehicle_config_path)
     set_initial_speed(body, float(scenario['target_mps']))
     wheels = tuple(body.wheel_labels)
-    return controller, body, wheels
+    return steer, trq, body, wheels
 
 
 def init_sim_log(n: int, t, wheels) -> dict:
@@ -126,6 +135,7 @@ def init_sim_log(n: int, t, wheels) -> dict:
         'yaw_meas':        np.zeros(n),
         'mz_actual':       np.zeros(n),
         'fy_total_actual': np.zeros(n),
+        'delta_cmd':       {w: np.zeros(n) for w in wheels},
         'delta_meas':      {w: np.zeros(n) for w in wheels},
         'steer_trq':       {w: np.zeros(n) for w in wheels},
     }
@@ -137,6 +147,7 @@ def log_step(
     body: VehicleBody,
     yaw_ref: float,
     out: dict,
+    delta_cmd: dict,
     steer_trq: dict,
     wheels,
 ) -> None:
@@ -146,5 +157,6 @@ def log_step(
     log['mz_actual'][i]       = float(out['Mz_actual'])
     log['fy_total_actual'][i] = float(out['Fy_total_actual'])
     for w in wheels:
+        log['delta_cmd'][w][i]  = float(delta_cmd[w])
         log['delta_meas'][w][i] = float(body.corners[w].state.steering_angle)
         log['steer_trq'][w][i]  = float(steer_trq[w])

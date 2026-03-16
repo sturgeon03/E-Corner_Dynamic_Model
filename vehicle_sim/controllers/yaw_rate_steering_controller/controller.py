@@ -137,6 +137,7 @@ class YawRateSteeringController:
         *,
         vehicle_config_path: Optional[str] = None,
         gains_path: Optional[str] = None,
+        output_mode: str = "torque",
     ) -> None:
         self.options = options or YawRateSteeringControllerOptions()
         if self.options.dt <= 0.0:
@@ -241,6 +242,7 @@ class YawRateSteeringController:
         self._prev_delta_dot_meas = {label: 0.0 for label in WHEEL_LABELS}
         self._sample_index = 0
         self._last_error_debug: Dict[str, Any] = {}
+        self._output_mode = output_mode
 
     def reset(self) -> None:
         """Reset all internal controller states."""
@@ -258,8 +260,15 @@ class YawRateSteeringController:
         self._sample_index = 0
         self._last_error_debug = {}
 
-    def __call__(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
+    def update(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
+        """Advance one control step. Dispatches to compute_steer_command or
+        compute_torque_command depending on the output_mode set at construction."""
+        if self._output_mode == "steer":
+            return self.compute_steer_command(state, ref)
         return self.compute_torque_command(state, ref)
+
+    def __call__(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
+        return self.update(state, ref)
 
     def compute_torque_command(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
         """Advance one control step and return steering motor torque command."""
@@ -269,7 +278,7 @@ class YawRateSteeringController:
         self._sample_index += 1
         return torque_cmd
 
-    def compute_angle_command(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
+    def compute_steer_command(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
         """Advance one control step and return steering-angle command only.
 
         Notes:
@@ -872,7 +881,7 @@ def compute_steering_angle(
 ) -> Dict[str, float]:
     """One-line angle API using a shared default controller instance."""
     instance = _resolve_controller(controller, reset)
-    return instance.compute_angle_command(state, ref)
+    return instance.compute_steer_command(state, ref)
 
 
 # Backward-compatible names kept for existing integrations.
