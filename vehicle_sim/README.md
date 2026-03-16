@@ -121,6 +121,29 @@ corner.update(dt=0.001, T_steer=0.0, T_brk=0.0, T_Drv=0.0,
               T_susp=0.0, X_body=X_body, z_road=0.0)
 ```
 
+### VehicleBody
+
+4개 E-Corner + 차체 6자유도 동역학을 통합한 전체 차량 모델.
+
+```python
+from vehicle_sim import VehicleBody
+
+vehicle = VehicleBody()
+
+# 코너별 액추에이터 입력 정의
+corner_inputs = {
+    "FL": {"T_steer": 0.0, "T_brk": 0.0, "T_Drv": 10.0, "T_susp": 0.0, "z_road": 0.0},
+    "FR": {"T_steer": 0.0, "T_brk": 0.0, "T_Drv": 10.0, "T_susp": 0.0, "z_road": 0.0},
+    "RL": {"T_steer": 0.0, "T_brk": 0.0, "T_Drv": 10.0, "T_susp": 0.0, "z_road": 0.0},
+    "RR": {"T_steer": 0.0, "T_brk": 0.0, "T_Drv": 10.0, "T_susp": 0.0, "z_road": 0.0},
+}
+
+vehicle.update(dt=0.001, corner_inputs=corner_inputs)
+
+# 차체 상태 조회
+state = vehicle.state  # VehicleBodyState (x, y, heave, roll, pitch, yaw, ...)
+```
+
 ### 파라미터 (`vehicle_standard.yaml`)
 
 모든 서브모델이 공유하는 차량 관련 파라미터 파일.
