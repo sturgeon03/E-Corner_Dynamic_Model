@@ -6,7 +6,7 @@ E-Corner 차량 동역학 시뮬레이션 패키지.
 
 ## 시스템 구조
 
-![E-Corner Block Diagram](docs/ecorner_block_diagram.png)
+![E-Corner Block Diagram](../docs/ecorner_block_diagram.png)
 
 각 E-Corner는 독립적으로 동작하며, 4개 코너의 힘과 모멘트를 VehicleBody가 통합한다.
 
@@ -38,7 +38,7 @@ vehicle_sim/
     ├── vehicle_body/
     │   ├── vehicle_body.py                                # 전체 차량 바디 모델
     │   └── test_debug/
-    │       └── full_vehicle_simulation.ipynb              # 전체 차량 시뮬레이션 테스트
+    │       └── full_vehicle_body_test.ipynb                # 전체 차량 시뮬레이션 테스트
     └── e_corner/
         ├── e_corner.py                                    # 코너 통합 모델
         ├── test_debug/
@@ -74,24 +74,7 @@ vehicle_sim/
 
 ## models
 
-### VehicleBody
-
-4개 코너를 소유하는 전체 차량 강체 모델.
-
-- **입력**: 코너별 `T_steer`, `T_brk`, `T_Drv`, `T_susp`, `z_road`
-- **출력**: 6-DOF 차체 상태 (heave, roll, pitch, 속도, 가속도 등)
-- 각 코너의 서스펜션 수직력을 받아 차체 운동방정식 적분
-- 파라미터 출처: `models/params/vehicle_standard.yaml`
-
-```python
-from vehicle_sim import VehicleBody
-
-vehicle = VehicleBody()
-vehicle.update(dt=0.001, corner_inputs={...})
-state = vehicle.get_state_vector()
-```
-
-### ECorner
+### E-Corner
 
 코너 단위 통합 모델. 조향 → 구동/제동 → 서스펜션 → 타이어 순서로 업데이트.
 

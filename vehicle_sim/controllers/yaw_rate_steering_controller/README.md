@@ -43,46 +43,6 @@ T_steer_cmd = steering_ff(delta_cmd) + steering_pid(delta_cmd - delta_meas)
 
 ---
 
-## 초기화
-
-```python
-from vehicle_sim.controllers.yaw_rate_steering_controller import (
-    YawRateSteeringController,
-    YawRateSteeringControllerOptions,
-)
-
-options = YawRateSteeringControllerOptions(
-    dt=0.01,
-    enable_yaw_feedback=True,
-    enable_fy_feedback=False,
-    enable_steer_feedback=True,
-    enable_estimator=False,
-)
-
-controller = YawRateSteeringController(options)
-```
-
-YAML 런타임 설정 사용:
-
-```python
-from vehicle_sim.controllers.yaw_rate_steering_controller import (
-    load_controller_runtime_config,
-    YawRateSteeringController,
-)
-
-runtime_cfg = load_controller_runtime_config(
-    "vehicle_sim/controllers/yaw_rate_steering_controller/config/controller_options.example.yaml"
-)
-
-controller = YawRateSteeringController(
-    runtime_cfg.options,
-    vehicle_config_path=runtime_cfg.vehicle_config_path,
-    gains_path=runtime_cfg.gains_path,
-)
-```
-
----
-
 ## 메서드
 
 ### `compute_torque_command(state, ref) -> Dict[str, float]`
