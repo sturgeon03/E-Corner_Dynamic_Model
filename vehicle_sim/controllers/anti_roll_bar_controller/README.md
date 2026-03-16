@@ -72,7 +72,7 @@ $$
 $$
 
 $$
-M_\text{arb} = k_\text{arb} \cdot \Delta s + c_\text{arb} \cdot \dot{\Delta s}
+M_\text{arb} = k_\text{arb} \cdot \Delta s + c_\text{arb} \cdot \Delta \dot{s}
 $$
 
 $$
