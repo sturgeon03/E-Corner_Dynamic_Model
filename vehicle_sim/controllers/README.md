@@ -8,7 +8,7 @@
 
 ```text
 controllers/
-├── anti_roll_bar_controll/
+├── anti_roll_bar_control/
 │   ├── active_anti_roll_bar_controller.py   # 제어기 본체
 │   ├── param/
 │   │   └── aarb_param.yaml                  # 게인 파라미터
@@ -35,9 +35,9 @@ controllers/
 
 좌우 서스펜션 스트로크 차이를 입력으로 받아 코너별 안티롤 토크를 출력하는 PD 제어기.
 
-**예제 노트북**: [aarb_comparison.ipynb](anti_roll_bar_controll/test_debug/aarb_comparison.ipynb)
-**테스트 코드**: [active_anti_roll_bar_controller.py](anti_roll_bar_controll/active_anti_roll_bar_controller.py)
-**파라미터**: [aarb_param.yaml](anti_roll_bar_controll/param/aarb_param.yaml)
+**예제 노트북**: [aarb_comparison.ipynb](anti_roll_bar_control/test_debug/aarb_comparison.ipynb)
+**테스트 코드**: [active_anti_roll_bar_controller.py](anti_roll_bar_control/active_anti_roll_bar_controller.py)
+**파라미터**: [aarb_param.yaml](anti_roll_bar_control/param/aarb_param.yaml)
 
 ---
 
