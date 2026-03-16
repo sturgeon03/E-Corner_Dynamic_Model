@@ -17,7 +17,8 @@ E-Corner_Dynamic_Model/
 └── README.md
 ```
 
-패키지 상세 구조 및 모델 설명은 [vehicle_sim/README.md](vehicle_sim/README.md) 참고.
+패키지 상세 구조 및 모델 설명은 [vehicle_sim/models/README.md](vehicle_sim/models/README.md) 참고.
+제어기 상세 설명은 [vehicle_sim/controllers/README.md](vehicle_sim/controllers/README.md) 참고.
 
 ---
 

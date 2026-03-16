@@ -1,90 +1,163 @@
-﻿# Yaw Rate Steering Controller
+# Yaw Rate Steering Controller
 
-사용자는 **패키지 루트 import만 사용**하세요.
-- 권장: `from vehicle_sim.controllers.yaw_rate_steering_controller import ...`
-- 비권장: 내부 구현 파일 직접 import
+목표 yaw rate를 입력으로 받아 yaw moment, 타이어 횡력, 조향각, 조향 모터 토크를 순차적으로 계산하는 통합 조향 제어기.
 
-공식 진입점은 [`controller.py`](./controller.py) 입니다.
+**예제 코드**: [controller_usage_demo.py](examples/controller_usage_demo.py)
+**테스트 코드**: [test_public_api.py](tests/test_public_api.py)
+**파라미터**: [controller_gains.yaml](config/controller_gains.yaml), [controller_options.example.yaml](config/controller_options.example.yaml)
 
-## 폴더 구조
-- 루트(공개 API)
-  - `controller.py`: 메인 제어기
-  - `config_adapter.py`: 옵션 YAML -> 런타임 옵션
-  - `__init__.py`: 공개 API re-export
-  - `README.md`
-- 구현 상세
-  - `control_blocks/`: `steer_*`, `yaw_moment_*`, `pid_controller.py`
-  - `estimators/`: `lateral_force_estimator.py`, `slip_angle_estimator.py`, `steering_param_estimator.py`
-  - `config/`: `controller_gains.yaml`, `controller_options.example.yaml`
-  - `examples/`: `controller_usage_demo.py`
-  - `tests/`: `test_public_api.py`
+---
 
-## 권장 사용법
+## 제어 흐름
+
+```text
+yaw_rate_ref
+ -> yaw moment feedforward + feedback
+ -> per-wheel lateral force allocation
+ -> per-wheel steering angle command
+ -> steering motor torque command
+```
+
+대표 계산 흐름:
+
+```text
+Mz_cmd = Mz_ff + PID(yaw_rate_ref - yaw_rate_meas)
+Fy_total_cmd = m * vx_cmd * yaw_rate_ref
+delta_cmd = steering_feedforward(Fy_cmd, vx_cmd, yaw_rate_ref, vy_cmd)
+T_steer_cmd = steering_ff(delta_cmd) + steering_pid(delta_cmd - delta_meas)
+```
+
+---
+
+## 모드 및 옵션 (`controller_options.example.yaml`)
+
+| 항목 | 기본값 | 설명 |
+|---|---|---|
+| `mode` | `ff_fb_ls` | 기본 운용 모드 |
+| `ff` | - | feedforward만 사용 |
+| `ff_fb` | - | yaw/Fy/steer feedback 사용 |
+| `ff_fb_ls` | - | feedback + slip/B/C_alpha 추정 사용 |
+| `dt` | 0.01 | 제어 주기 |
+| `fy_feedback_source` | `estimate` | Fy feedback 입력원 |
+| `enable_estimator` | `true` | 파라미터 추정기 사용 여부 |
+
+---
+
+## 초기화
+
 ```python
 from vehicle_sim.controllers.yaw_rate_steering_controller import (
     YawRateSteeringController,
     YawRateSteeringControllerOptions,
 )
 
-options = YawRateSteeringControllerOptions(dt=0.001)
-controller = YawRateSteeringController(options)
-
-torque_cmd = controller.compute_torque_command(state, ref)
-angle_cmd = controller.compute_angle_command(state, ref)
-```
-
-디버그:
-```python
-torque_cmd, debug = controller.compute_torque_with_debug(state, ref)
-```
-
-간단 함수 API:
-```python
-from vehicle_sim.controllers.yaw_rate_steering_controller import (
-    compute_steering_torque,
-    compute_steering_angle,
+options = YawRateSteeringControllerOptions(
+    dt=0.01,
+    enable_yaw_feedback=True,
+    enable_fy_feedback=False,
+    enable_steer_feedback=True,
+    enable_estimator=False,
 )
 
-torque_cmd = compute_steering_torque(state, ref, reset=True)
-angle_cmd = compute_steering_angle(state, ref, reset=True)
+controller = YawRateSteeringController(options)
 ```
 
-## 입력/출력 계약
+YAML 런타임 설정 사용:
+
+```python
+from vehicle_sim.controllers.yaw_rate_steering_controller import (
+    load_controller_runtime_config,
+    YawRateSteeringController,
+)
+
+runtime_cfg = load_controller_runtime_config(
+    "vehicle_sim/controllers/yaw_rate_steering_controller/config/controller_options.example.yaml"
+)
+
+controller = YawRateSteeringController(
+    runtime_cfg.options,
+    vehicle_config_path=runtime_cfg.vehicle_config_path,
+    gains_path=runtime_cfg.gains_path,
+)
+```
+
+---
+
+## 메서드
+
+### `compute_torque_command(state, ref) -> Dict[str, float]`
+
+매 스텝 조향 모터 토크 명령 계산.
+
+| 인자 | 타입 | 설명 |
+|---|---|---|
+| `state` | `dict` | 현재 차량 상태 입력 |
+| `ref` | `dict` | yaw rate 기준 입력 |
+
 필수 `state`:
-- `yaw_rate` [rad/s]
-- `vx` [m/s]
-- `steering_angle` (`FL/FR/RR/RL` -> [rad])
+- `yaw_rate`
+- `vx`
+- `steering_angle`
 
 필수 `ref`:
-- `yaw_rate` [rad/s]
+- `yaw_rate`
 
-선택 `state`:
-- `ay`, `delta_dot`, `fy_tire`, `steering_torque_axis`, `alpha`
+**출력**: 바퀴별 조향 모터 토크 `[N*m]`
 
-출력:
-- 토크 API: 바퀴별 조향 모터 토크 [N*m]
-- 각도 API: 바퀴별 조향각 명령 [rad]
+### `compute_angle_command(state, ref) -> Dict[str, float]`
 
-## 모드와 기본 동작
-옵션 템플릿: `config/controller_options.example.yaml`
-- `ff`
-- `ff_fb`
-- `ff_fb_ls` (권장 기본)
+조향각 명령만 계산하는 경량 경로.
 
-중요 기본값:
-- `fy_feedback_source = estimate`
-- `use_lateral_force_estimator = true`
-- `compute_angle_command()` 경로는 `C_alpha` 추정은 수행, `B` 추정은 스킵
+**출력**: 바퀴별 조향각 명령 `[rad]`
 
-## YAML 로딩 예시
+### `compute_torque_with_debug(state, ref) -> Tuple[Dict[str, float], Dict[str, Any]]`
+
+조향 모터 토크와 디버그 정보를 함께 반환.
+
+주요 디버그 항목:
+- `Mz_cmd`
+- `Fy_cmd`
+- `delta_cmd`
+- `T_steer_ff_motor`
+- `T_steer_ff_axis`
+- `estimator`
+
+### `control(...)`, `control_torque(...)`, `control_angle(...)`
+
+기존 연동 코드를 위한 backward-compatible alias.
+
+### `compute_steering_torque(...)`, `compute_steering_angle(...)`
+
+공유 기본 인스턴스를 사용하는 간단 함수 API.
+
+---
+
+## 실행 예시
+
 ```bash
-python SeohanModel/vehicle_sim/scenarios/yaw_rate_study/quick_plot_controller.py \
-  --controller-config SeohanModel/vehicle_sim/controllers/yaw_rate_steering_controller/config/controller_options.example.yaml
+python -m vehicle_sim.controllers.yaw_rate_steering_controller.examples.controller_usage_demo
+python vehicle_sim/controllers/yaw_rate_steering_controller/examples/controller_usage_demo.py
+python -m vehicle_sim.controllers.yaw_rate_steering_controller.tests.test_public_api
 ```
 
-## 실행
-```bash
-cd SeohanModel
-python -m vehicle_sim.controllers.yaw_rate_steering_controller.examples.controller_usage_demo
-python -m vehicle_sim.controllers.yaw_rate_steering_controller.tests.test_public_api
+시뮬레이션 루프 예시:
+
+```python
+state = {
+    "yaw_rate": body.state.yaw_rate,
+    "vx": body.state.velocity_x,
+    "steering_angle": {c: body.corners[c].state.steering_angle for c in ["FL", "FR", "RR", "RL"]},
+    "fy_tire": {c: body.corners[c].state.F_y_tire for c in ["FL", "FR", "RR", "RL"]},
+    "fx_tire": {c: body.corners[c].state.F_x_tire for c in ["FL", "FR", "RR", "RL"]},
+    "ay": body.state.ay_prev,
+}
+
+ref = {
+    "yaw_rate": yaw_rate_ref,
+    "yaw_accel": yaw_accel_ref,
+    "vx": body.state.velocity_x,
+    "vy": body.state.velocity_y,
+}
+
+T_steer = controller.compute_torque_command(state, ref)
 ```
