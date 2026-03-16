@@ -11,6 +11,7 @@ control loop and use one output mode consistently on that instance.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,6 +52,27 @@ class YawRateSteeringControllerOptions:
     enable_c_alpha_estimator: bool = True
     estimator_forgetting_factor: float = 0.995
     estimator_p0: float = 50.0
+    b_estimator_forgetting_factor: Optional[float] = None
+    b_estimator_p0: Optional[float] = None
+    b_estimator_min_value: Optional[float] = None
+    b_estimator_max_value: Optional[float] = None
+    b_estimator_start_time: float = 0.0
+    b_estimator_min_samples: int = 0
+    b_estimator_sample_decimation: int = 1
+    b_estimator_dot_min_abs: float = 0.0
+    b_estimator_angle_margin_rad: float = 0.0
+    b_estimator_rate_margin_rad_s: float = 0.0
+    b_estimator_use_torque_fallback: bool = False
+    c_alpha_estimator_forgetting_factor: Optional[float] = None
+    c_alpha_estimator_p0: Optional[float] = None
+    c_alpha_estimator_min_value: Optional[float] = None
+    c_alpha_estimator_max_value: Optional[float] = None
+    c_alpha_estimator_start_time: float = 0.0
+    c_alpha_estimator_min_samples: int = 0
+    c_alpha_estimator_sample_decimation: int = 1
+    c_alpha_estimator_alpha_min_abs: float = 0.0
+    c_alpha_estimator_fz_min: float = 0.0
+    c_alpha_estimator_fy_saturation_margin: float = 0.0
     use_lateral_force_estimator: bool = True
     use_slip_angle_estimator: bool = True
     steer_ff_max_accel: Optional[float] = None
@@ -63,6 +85,7 @@ class _VehicleConfig:
     izz: float
     wheelbase: float
     track: float
+    corner_xy: Dict[str, Tuple[float, float]]
     base_j: float
     base_b: float
     base_c_alpha: float
@@ -83,8 +106,8 @@ class YawRateSteeringController:
     - Create one controller instance per vehicle/control loop.
     - Use either `compute_torque_command()` or `compute_angle_command()` consistently on that
       instance.
-    - If torque mode also needs intermediate steering-angle command, use
-      `compute_torque_with_debug()` and read `debug["delta_cmd"]`.
+    - If error-only diagnostics are needed, call `compute_error_debug()`
+      or `get_last_error_debug()`.
 
     Avoid calling torque/angle methods back-to-back on the
     same controller instance for the same sample. Both methods advance internal
@@ -105,10 +128,7 @@ class YawRateSteeringController:
     - `steering_torque_axis`: per-wheel axis torque [N*m] (for B estimator)
     - `alpha`: per-wheel slip angle [rad] (for C_alpha estimator)
 
-    Optional `ref` keys:
-    - `yaw_accel`: yaw acceleration target [rad/s^2]
-    - `vx`: command speed [m/s] (defaults to `state["vx"]`)
-    - `vy`: command lateral speed [m/s] (default: 0.0)
+    `ref` must contain only `yaw_rate`.
     """
 
     def __init__(
@@ -164,27 +184,63 @@ class YawRateSteeringController:
         self._b_estimators: Dict[str, ScalarRLS] = {}
         self._c_estimators: Dict[str, ScalarRLS] = {}
         if self.options.enable_estimator:
-            b_clamp = ScalarClamp(min_value=0.0, max_value=None)
-            c_clamp = ScalarClamp(min_value=1.0, max_value=None)
+            b_clamp = ScalarClamp(
+                min_value=(
+                    self.options.b_estimator_min_value
+                    if self.options.b_estimator_min_value is not None
+                    else 0.0
+                ),
+                max_value=self.options.b_estimator_max_value,
+            )
+            c_clamp = ScalarClamp(
+                min_value=(
+                    self.options.c_alpha_estimator_min_value
+                    if self.options.c_alpha_estimator_min_value is not None
+                    else 1.0
+                ),
+                max_value=self.options.c_alpha_estimator_max_value,
+            )
             if self.options.enable_b_estimator:
+                b_forgetting_factor = (
+                    self.options.b_estimator_forgetting_factor
+                    if self.options.b_estimator_forgetting_factor is not None
+                    else self.options.estimator_forgetting_factor
+                )
+                b_p0 = (
+                    self.options.b_estimator_p0
+                    if self.options.b_estimator_p0 is not None
+                    else self.options.estimator_p0
+                )
                 for label in WHEEL_LABELS:
                     self._b_estimators[label] = ScalarRLS(
                         init_value=self.vehicle_cfg.base_b,
-                        forgetting_factor=self.options.estimator_forgetting_factor,
-                        p0=self.options.estimator_p0,
+                        forgetting_factor=b_forgetting_factor,
+                        p0=b_p0,
                         clamp=b_clamp,
                     )
             if self.options.enable_c_alpha_estimator:
+                c_alpha_forgetting_factor = (
+                    self.options.c_alpha_estimator_forgetting_factor
+                    if self.options.c_alpha_estimator_forgetting_factor is not None
+                    else self.options.estimator_forgetting_factor
+                )
+                c_alpha_p0 = (
+                    self.options.c_alpha_estimator_p0
+                    if self.options.c_alpha_estimator_p0 is not None
+                    else self.options.estimator_p0
+                )
                 for label in WHEEL_LABELS:
                     self._c_estimators[label] = ScalarRLS(
                         init_value=self.vehicle_cfg.base_c_alpha,
-                        forgetting_factor=self.options.estimator_forgetting_factor,
-                        p0=self.options.estimator_p0,
+                        forgetting_factor=c_alpha_forgetting_factor,
+                        p0=c_alpha_p0,
                         clamp=c_clamp,
                     )
 
         self._prev_delta_meas = {label: 0.0 for label in WHEEL_LABELS}
         self._prev_delta_dot_meas = {label: 0.0 for label in WHEEL_LABELS}
+        self._sample_index = 0
+        self._last_error_debug: Dict[str, Any] = {}
 
     def reset(self) -> None:
         """Reset all internal controller states."""
@@ -199,13 +255,18 @@ class YawRateSteeringController:
             self._lateral_force_estimator.reset()
         if self._slip_estimator is not None:
             self._slip_estimator.reset()
+        self._sample_index = 0
+        self._last_error_debug = {}
 
     def __call__(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
         return self.compute_torque_command(state, ref)
 
     def compute_torque_command(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
         """Advance one control step and return steering motor torque command."""
-        torque_cmd, _ = self.compute_torque_with_debug(state, ref)
+        stage = self._compute_delta_stage(state, ref)
+        torque_cmd, est_debug = self._compute_torque_stage(state, stage)
+        self._last_error_debug = self._build_error_debug(stage, est_debug)
+        self._sample_index += 1
         return torque_cmd
 
     def compute_angle_command(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
@@ -216,99 +277,29 @@ class YawRateSteeringController:
           B (viscous) estimation because steering torque terms are not produced.
         """
         stage = self._compute_delta_stage(state, ref)
-        self._update_estimators(
+        est_debug = self._update_estimators(
             state,
             stage["Fy_cmd"],
             t_ff_axis=None,
             update_b=False,
             update_c_alpha=True,
         )
+        self._last_error_debug = self._build_error_debug(stage, est_debug)
+        self._sample_index += 1
         return {label: float(stage["delta_cmd"].get(label, 0.0)) for label in WHEEL_LABELS}
 
-    def compute_torque_with_debug(
+    def compute_error_debug(
         self,
         state: Mapping[str, Any],
         ref: Mapping[str, Any],
-    ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-        """Return `(torque_cmd, debug)` for inspection and tuning."""
-        stage = self._compute_delta_stage(state, ref)
-        yaw_error = float(stage["yaw_error"])
-        mz_ff = float(stage["Mz_ff"])
-        mz_fb = float(stage["Mz_fb"])
-        mz_cmd = float(stage["Mz_cmd"])
-        fy_total_cmd = float(stage["Fy_total_cmd"])
-        fy_cmd = dict(stage["Fy_cmd"])
-        fy_actual = dict(stage["Fy_actual_for_fb"])
-        delta_cmd = dict(stage["delta_cmd"])
-        steer_debug = dict(stage["steer_debug"])
+    ) -> Dict[str, Any]:
+        """Advance one control step and return error-only diagnostics."""
+        self.compute_torque_command(state, ref)
+        return self.get_last_error_debug()
 
-        align_cmd = self._compute_align_cmd(fy_cmd)
-        ff_params = self._build_ff_params(self._active_b_map())
-        t_ff_motor, t_ff_axis = self._steer_torque_ff.compute_torque(
-            WHEEL_LABELS,
-            delta_cmd=delta_cmd,
-            align_cmd=align_cmd,
-            params_map=ff_params,
-        )
-
-        torque_cmd = dict(t_ff_motor)
-        if self.options.enable_steer_feedback:
-            for label in WHEEL_LABELS:
-                delta_err = float(delta_cmd.get(label, 0.0)) - float(self._vehicle.corners[label].state.steering_angle)
-                corr_axis = float(self._steer_pids[label].update(delta_err))
-                gear = float(self._vehicle.corners[label].steering.params.gear_ratio)
-                corr_motor = corr_axis if abs(gear) < 1e-6 else corr_axis / gear
-                torque_cmd[label] = float(torque_cmd.get(label, 0.0)) + float(corr_motor)
-
-        est_debug = self._update_estimators(
-            state,
-            fy_cmd,
-            t_ff_axis=t_ff_axis,
-            update_b=True,
-            update_c_alpha=True,
-        )
-
-        debug = {
-            "yaw_error": float(yaw_error),
-            "Mz_ff": float(mz_ff),
-            "Mz_fb": float(mz_fb),
-            "Mz_cmd": float(mz_cmd),
-            "Fy_total_cmd": float(fy_total_cmd),
-            "Fy_cmd": fy_cmd,
-            "Fy_actual_for_fb": fy_actual,
-            "delta_cmd": delta_cmd,
-            "alpha_cmd": steer_debug.get("alpha_cmd", {}),
-            "beta_ref": steer_debug.get("beta_ref", {}),
-            "T_align_cmd": align_cmd,
-            "T_steer_ff_motor": t_ff_motor,
-            "T_steer_ff_axis": t_ff_axis,
-            "estimator": est_debug,
-        }
-        return torque_cmd, debug
-
-    # Backward-compatible aliases
-    def control(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
-        """Return per-wheel steering motor torque commands only.
-
-        This is a backward-compatible alias of `control_torque()`.
-        """
-        return self.compute_torque_command(state, ref)
-
-    def control_torque(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
-        """Advance one control step and return steering motor torque command."""
-        return self.compute_torque_command(state, ref)
-
-    def control_angle(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
-        """Advance one control step and return steering-angle command only."""
-        return self.compute_angle_command(state, ref)
-
-    def control_with_debug(
-        self,
-        state: Mapping[str, Any],
-        ref: Mapping[str, Any],
-    ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-        """Return `(torque_cmd, debug)` for inspection and tuning."""
-        return self.compute_torque_with_debug(state, ref)
+    def get_last_error_debug(self) -> Dict[str, Any]:
+        """Return latest error-only diagnostics from the most recent control step."""
+        return deepcopy(self._last_error_debug)
 
     def _compute_delta_stage(
         self,
@@ -318,10 +309,10 @@ class YawRateSteeringController:
         """Compute upstream control stage through steering-angle command."""
         self._ingest_state(state)
 
-        yaw_rate_ref = float(ref["yaw_rate"])
-        yaw_accel_ref = ref.get("yaw_accel", None)
-        vx_cmd = float(ref.get("vx", state["vx"]))
-        vy_cmd = float(ref.get("vy", 0.0))
+        yaw_rate_ref = self._extract_yaw_rate_ref(ref)
+        yaw_accel_ref = None
+        vx_cmd = float(state["vx"])
+        vy_cmd = 0.0
 
         yaw_error = yaw_rate_ref - float(self._vehicle.state.yaw_rate)
         mz_fb = self._yaw_pid.update(yaw_error) if self.options.enable_yaw_feedback else 0.0
@@ -357,6 +348,78 @@ class YawRateSteeringController:
             "Fy_actual_for_fb": {label: float(fy_actual.get(label, 0.0)) for label in WHEEL_LABELS},
             "delta_cmd": {label: float(delta_cmd.get(label, 0.0)) for label in WHEEL_LABELS},
             "steer_debug": dict(steer_debug),
+        }
+
+    @staticmethod
+    def _extract_yaw_rate_ref(ref: Mapping[str, Any]) -> float:
+        if "yaw_rate" not in ref:
+            raise KeyError("ref must include 'yaw_rate'")
+        extra_keys = [str(k) for k in ref.keys() if str(k) != "yaw_rate"]
+        if extra_keys:
+            extra_keys_str = ", ".join(sorted(extra_keys))
+            raise KeyError(
+                "ref supports only 'yaw_rate'; remove unsupported key(s): "
+                f"{extra_keys_str}"
+            )
+        return float(ref["yaw_rate"])
+
+    def _compute_torque_stage(
+        self,
+        state: Mapping[str, Any],
+        stage: Mapping[str, Any],
+    ) -> Tuple[Dict[str, float], Dict[str, Any]]:
+        fy_cmd = dict(stage["Fy_cmd"])
+        delta_cmd = dict(stage["delta_cmd"])
+        align_cmd = self._compute_align_cmd(fy_cmd)
+        ff_params = self._build_ff_params(self._active_b_map())
+        t_ff_motor, t_ff_axis = self._steer_torque_ff.compute_torque(
+            WHEEL_LABELS,
+            delta_cmd=delta_cmd,
+            align_cmd=align_cmd,
+            params_map=ff_params,
+        )
+
+        torque_cmd = dict(t_ff_motor)
+        if self.options.enable_steer_feedback:
+            for label in WHEEL_LABELS:
+                delta_err = float(delta_cmd.get(label, 0.0)) - float(self._vehicle.corners[label].state.steering_angle)
+                corr_axis = float(self._steer_pids[label].update(delta_err))
+                gear = float(self._vehicle.corners[label].steering.params.gear_ratio)
+                corr_motor = corr_axis if abs(gear) < 1e-6 else corr_axis / gear
+                torque_cmd[label] = float(torque_cmd.get(label, 0.0)) + float(corr_motor)
+
+        est_debug = self._update_estimators(
+            state,
+            fy_cmd,
+            t_ff_axis=t_ff_axis,
+            update_b=True,
+            update_c_alpha=True,
+        )
+        return (
+            {label: float(torque_cmd.get(label, 0.0)) for label in WHEEL_LABELS},
+            est_debug,
+        )
+
+    def _build_error_debug(
+        self,
+        stage: Mapping[str, Any],
+        est_debug: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        fy_cmd = self._normalize_map(stage.get("Fy_cmd", {}), 0.0)
+        fy_actual = self._normalize_map(stage.get("Fy_actual_for_fb", {}), 0.0)
+        delta_cmd = self._normalize_map(stage.get("delta_cmd", {}), 0.0)
+
+        fy_error = {}
+        delta_error = {}
+        for label in WHEEL_LABELS:
+            fy_error[label] = float(fy_cmd[label]) - float(fy_actual[label])
+            delta_error[label] = float(delta_cmd[label]) - float(self._vehicle.corners[label].state.steering_angle)
+
+        return {
+            "yaw_rate_error": float(stage.get("yaw_error", 0.0)),
+            "fy_error": fy_error,
+            "steering_angle_error": delta_error,
+            "estimator": dict(est_debug),
         }
 
     def _ingest_state(self, state: Mapping[str, Any]) -> None:
@@ -421,6 +484,8 @@ class YawRateSteeringController:
             else self._estimate_delta_dot(delta_map)
         )
         delta_ddot_map = self._estimate_delta_ddot(delta_dot_map)
+        current_time = float(self._sample_index) * float(self.options.dt)
+        step_index = int(self._sample_index)
 
         b_updated = False
         c_alpha_updated = False
@@ -429,7 +494,7 @@ class YawRateSteeringController:
             torque_axis_map: Optional[Dict[str, float]]
             if "steering_torque_axis" in state:
                 torque_axis_map = self._normalize_map(state.get("steering_torque_axis", {}), 0.0)
-            elif t_ff_axis is not None:
+            elif self.options.b_estimator_use_torque_fallback and t_ff_axis is not None:
                 torque_axis_map = {label: float(t_ff_axis.get(label, 0.0)) for label in WHEEL_LABELS}
             else:
                 torque_axis_map = None
@@ -442,8 +507,16 @@ class YawRateSteeringController:
                         - float(align_cmd[label])
                         - float(self.vehicle_cfg.base_j) * float(delta_ddot_map[label])
                     )
-                    self._b_estimators[label].update(y_b, float(delta_dot_map[label]))
-                b_updated = True
+                    if self._should_update_b_estimator(
+                        label=label,
+                        current_time=current_time,
+                        step_index=step_index,
+                        delta=float(delta_map[label]),
+                        delta_dot=float(delta_dot_map[label]),
+                        delta_ddot=float(delta_ddot_map[label]),
+                    ):
+                        self._b_estimators[label].update(y_b, float(delta_dot_map[label]))
+                        b_updated = True
 
         if update_c_alpha and self.options.enable_c_alpha_estimator and self._c_estimators:
             if self._slip_estimator is not None:
@@ -459,10 +532,18 @@ class YawRateSteeringController:
             fy_for_c = self._normalize_map(state.get("fy_tire", {}), 0.0)
             for label in WHEEL_LABELS:
                 alpha = float(alpha_map[label])
-                if abs(alpha) < 1e-9:
-                    continue
-                self._c_estimators[label].update(-float(fy_for_c[label]), alpha)
-                c_alpha_updated = True
+                fy_val = float(fy_for_c[label])
+                fz_val = float(self._vehicle.corners[label].state.F_z)
+                if self._should_update_c_alpha_estimator(
+                    label=label,
+                    current_time=current_time,
+                    step_index=step_index,
+                    alpha=alpha,
+                    fy=fy_val,
+                    fz=fz_val,
+                ):
+                    self._c_estimators[label].update(-fy_val, alpha)
+                    c_alpha_updated = True
 
         return {
             "B_hat": self._active_b_map(),
@@ -471,6 +552,12 @@ class YawRateSteeringController:
             "delta_ddot": delta_ddot_map,
             "B_updated": bool(b_updated),
             "C_alpha_updated": bool(c_alpha_updated),
+            "B_samples": {
+                label: int(self._b_estimators[label].sample_count) for label in self._b_estimators
+            },
+            "C_alpha_samples": {
+                label: int(self._c_estimators[label].sample_count) for label in self._c_estimators
+            },
         }
 
     def _estimate_delta_dot(self, delta_map: Mapping[str, float]) -> Dict[str, float]:
@@ -488,6 +575,66 @@ class YawRateSteeringController:
             out[label] = (float(delta_dot_map[label]) - float(self._prev_delta_dot_meas[label])) / dt
             self._prev_delta_dot_meas[label] = float(delta_dot_map[label])
         return out
+
+    def _should_update_b_estimator(
+        self,
+        *,
+        label: str,
+        current_time: float,
+        step_index: int,
+        delta: float,
+        delta_dot: float,
+        delta_ddot: float,
+    ) -> bool:
+        if current_time < float(self.options.b_estimator_start_time):
+            return False
+        if step_index % max(1, int(self.options.b_estimator_sample_decimation)) != 0:
+            return False
+        if abs(delta_dot) < float(self.options.b_estimator_dot_min_abs):
+            return False
+        if not np.isfinite(delta) or not np.isfinite(delta_dot) or not np.isfinite(delta_ddot):
+            return False
+
+        params = self._vehicle.corners[label].steering.params
+        lower = min(float(params.max_angle_neg), float(params.max_angle_pos))
+        upper = max(float(params.max_angle_neg), float(params.max_angle_pos))
+        angle_margin = float(self.options.b_estimator_angle_margin_rad)
+        rate_margin = float(self.options.b_estimator_rate_margin_rad_s)
+        if delta <= lower + angle_margin or delta >= upper - angle_margin:
+            return False
+        if abs(delta_dot) >= float(params.max_rate) - rate_margin:
+            return False
+        return True
+
+    def _should_update_c_alpha_estimator(
+        self,
+        *,
+        label: str,
+        current_time: float,
+        step_index: int,
+        alpha: float,
+        fy: float,
+        fz: float,
+    ) -> bool:
+        if current_time < float(self.options.c_alpha_estimator_start_time):
+            return False
+        if step_index % max(1, int(self.options.c_alpha_estimator_sample_decimation)) != 0:
+            return False
+        if abs(alpha) < float(self.options.c_alpha_estimator_alpha_min_abs):
+            return False
+        if abs(fz) < float(self.options.c_alpha_estimator_fz_min):
+            return False
+        if not np.isfinite(alpha) or not np.isfinite(fy) or not np.isfinite(fz):
+            return False
+
+        mu = float(self._vehicle.corners[label].lateral_tire.params.mu)
+        fy_max = abs(mu * fz)
+        if fy_max <= 0.0:
+            return False
+        sat_margin = float(self.options.c_alpha_estimator_fy_saturation_margin)
+        if abs(fy) >= fy_max * (1.0 - sat_margin):
+            return False
+        return True
 
     def _build_ff_params(self, b_map: Mapping[str, float]) -> Dict[str, SteeringFFParams]:
         out: Dict[str, SteeringFFParams] = {}
@@ -523,7 +670,14 @@ class YawRateSteeringController:
             or (not self._b_estimators)
         ):
             return {label: float(self.vehicle_cfg.base_b) for label in WHEEL_LABELS}
-        return {label: float(self._b_estimators[label].get_value()) for label in WHEEL_LABELS}
+        return {
+            label: (
+                float(self._b_estimators[label].get_value())
+                if self._b_estimators[label].sample_count >= int(self.options.b_estimator_min_samples)
+                else float(self.vehicle_cfg.base_b)
+            )
+            for label in WHEEL_LABELS
+        }
 
     def _active_c_alpha_map(self) -> Dict[str, float]:
         if (
@@ -532,7 +686,14 @@ class YawRateSteeringController:
             or (not self._c_estimators)
         ):
             return {label: float(self.vehicle_cfg.base_c_alpha) for label in WHEEL_LABELS}
-        return {label: float(self._c_estimators[label].get_value()) for label in WHEEL_LABELS}
+        return {
+            label: (
+                float(self._c_estimators[label].get_value())
+                if self._c_estimators[label].sample_count >= int(self.options.c_alpha_estimator_min_samples)
+                else float(self.vehicle_cfg.base_c_alpha)
+            )
+            for label in WHEEL_LABELS
+        }
 
     def _normalize_map(self, value: Any, default: float) -> Dict[str, float]:
         if isinstance(value, Mapping):
@@ -559,7 +720,7 @@ class YawRateSteeringController:
 
     @staticmethod
     def _default_gains_path() -> Path:
-        return Path(__file__).with_name("config").joinpath("controller_gains.yaml")
+        return Path(__file__).with_name("param").joinpath("controller_gains.yaml")
 
     def _load_pid_gains(self, section: str) -> PIDGains:
         cfg = load_param(section, str(self.gains_path))
@@ -573,6 +734,7 @@ class YawRateSteeringController:
         vehicle_body = load_param("vehicle_body", config_path)
         vehicle_spec = load_param("vehicle_spec", config_path)
         geometry = vehicle_spec.get("geometry", {})
+        corner_offsets = geometry.get("corner_offsets", {}) if isinstance(geometry, dict) else {}
         tire = load_param("tire", config_path)
         lateral = tire.get("lateral", {}) if isinstance(tire, dict) else {}
         steering = load_param("steering", config_path)
@@ -581,11 +743,26 @@ class YawRateSteeringController:
         right = steering.get("right", {}) if isinstance(steering, dict) else {}
         inertia = vehicle_body.get("inertia", {}) if isinstance(vehicle_body, dict) else {}
 
+        wheelbase = float(geometry.get("L_wheelbase", 2.8))
+        track = float(geometry.get("L_track", 1.6))
+        corner_xy: Dict[str, Tuple[float, float]] = {}
+        for label in WHEEL_LABELS:
+            offset = corner_offsets.get(label, {}) if isinstance(corner_offsets, Mapping) else {}
+            if isinstance(offset, Mapping) and "x" in offset and "y" in offset:
+                x_i = float(offset["x"])
+                y_i = float(offset["y"])
+            else:
+                signs = WHEEL_SIGNS[label]
+                x_i = (wheelbase / 2.0) * signs["pitch"]
+                y_i = (track / 2.0) * signs["roll"]
+            corner_xy[label] = (float(x_i), float(y_i))
+
         return _VehicleConfig(
             mass=float(vehicle_body.get("m", 1500.0)),
             izz=float(inertia.get("Izz", 2800.0)),
-            wheelbase=float(geometry.get("L_wheelbase", 2.8)),
-            track=float(geometry.get("L_track", 1.6)),
+            wheelbase=wheelbase,
+            track=track,
+            corner_xy=corner_xy,
             base_j=float(steering.get("J_cq", 0.05)),
             base_b=float(steering.get("B_cq", 0.5)),
             base_c_alpha=float(lateral.get("C_alpha", 80000.0)),
@@ -601,13 +778,7 @@ class YawRateSteeringController:
 
     @staticmethod
     def _wheel_xy_from_geometry(cfg: _VehicleConfig) -> Dict[str, Tuple[float, float]]:
-        wheel_xy = {}
-        for label in WHEEL_LABELS:
-            signs = WHEEL_SIGNS[label]
-            x_i = (cfg.wheelbase / 2.0) * signs["pitch"]
-            y_i = (cfg.track / 2.0) * signs["roll"]
-            wheel_xy[label] = (float(x_i), float(y_i))
-        return wheel_xy
+        return {label: (float(x_i), float(y_i)) for label, (x_i, y_i) in cfg.corner_xy.items()}
 
     @staticmethod
     def _build_vehicle_proxy(cfg: _VehicleConfig):
@@ -616,6 +787,7 @@ class YawRateSteeringController:
             Izz=float(cfg.izz),
             L_wheelbase=float(cfg.wheelbase),
             L_track=float(cfg.track),
+            corner_xy={label: (float(x_i), float(y_i)) for label, (x_i, y_i) in cfg.corner_xy.items()},
         )
         state = SimpleNamespace(yaw_rate=0.0)
         corners: Dict[str, Any] = {}
@@ -651,6 +823,7 @@ class YawRateSteeringController:
             state=state,
             wheel_labels=list(WHEEL_LABELS),
             corner_signs=WHEEL_SIGNS,
+            corner_xy={label: (float(x_i), float(y_i)) for label, (x_i, y_i) in cfg.corner_xy.items()},
             corners=corners,
         )
 
@@ -700,39 +873,6 @@ def compute_steering_angle(
     """One-line angle API using a shared default controller instance."""
     instance = _resolve_controller(controller, reset)
     return instance.compute_angle_command(state, ref)
-
-
-def control(
-    state: Mapping[str, Any],
-    ref: Mapping[str, Any],
-    *,
-    controller: Optional[YawRateSteeringController] = None,
-    reset: bool = False,
-) -> Dict[str, float]:
-    """Backward-compatible alias of `compute_steering_torque`."""
-    return compute_steering_torque(state, ref, controller=controller, reset=reset)
-
-
-def control_torque(
-    state: Mapping[str, Any],
-    ref: Mapping[str, Any],
-    *,
-    controller: Optional[YawRateSteeringController] = None,
-    reset: bool = False,
-) -> Dict[str, float]:
-    """Backward-compatible alias of `compute_steering_torque`."""
-    return compute_steering_torque(state, ref, controller=controller, reset=reset)
-
-
-def control_angle(
-    state: Mapping[str, Any],
-    ref: Mapping[str, Any],
-    *,
-    controller: Optional[YawRateSteeringController] = None,
-    reset: bool = False,
-) -> Dict[str, float]:
-    """Backward-compatible alias of `compute_steering_angle`."""
-    return compute_steering_angle(state, ref, controller=controller, reset=reset)
 
 
 # Backward-compatible names kept for existing integrations.

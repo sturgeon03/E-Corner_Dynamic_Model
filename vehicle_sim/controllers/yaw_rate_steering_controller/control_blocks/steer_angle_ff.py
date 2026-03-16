@@ -40,6 +40,24 @@ class SteeringFeedforwardController:
     def _unwrap_near(cls, angle: float, reference: float) -> float:
         return float(reference + cls._wrap_to_pi(angle - reference))
 
+    @staticmethod
+    def _resolve_corner_xy(vehicle_body, label: str) -> Tuple[float, float]:
+        corner_xy = getattr(vehicle_body, "corner_xy", None)
+        if isinstance(corner_xy, dict) and label in corner_xy:
+            x_i, y_i = corner_xy[label]
+            return float(x_i), float(y_i)
+
+        params = getattr(vehicle_body, "params", None)
+        params_corner_xy = getattr(params, "corner_xy", None)
+        if isinstance(params_corner_xy, dict) and label in params_corner_xy:
+            x_i, y_i = params_corner_xy[label]
+            return float(x_i), float(y_i)
+
+        signs = vehicle_body.corner_signs[label]
+        x_i = (vehicle_body.params.L_wheelbase / 2.0) * signs["pitch"]
+        y_i = (vehicle_body.params.L_track / 2.0) * signs["roll"]
+        return float(x_i), float(y_i)
+
     def compute_delta_cmd(
         self,
         vehicle_body,
@@ -139,9 +157,7 @@ class SteeringFeedforwardController:
             if c_alpha == 0.0:
                 raise ValueError("C_alpha must be non-zero for feedforward steering")
 
-            signs = vehicle_body.corner_signs[label]
-            x_i = (vehicle_body.params.L_wheelbase / 2.0) * signs["pitch"]
-            y_i = (vehicle_body.params.L_track / 2.0) * signs["roll"]
+            x_i, y_i = self._resolve_corner_xy(vehicle_body, label)
             vx_ref_body = vx_cmd - yaw_rate_cmd * y_i
             vy_ref_body = vy_cmd + yaw_rate_cmd * x_i
             beta_ref = float(np.arctan2(vy_ref_body, vx_ref_body))

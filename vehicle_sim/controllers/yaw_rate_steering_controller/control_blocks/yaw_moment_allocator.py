@@ -20,6 +20,24 @@ class YawMomentAllocator:
 
     min_abs_x: float = 1e-6
 
+    @staticmethod
+    def _resolve_corner_xy(vehicle_body, label: str) -> tuple[float, float]:
+        corner_xy = getattr(vehicle_body, "corner_xy", None)
+        if isinstance(corner_xy, dict) and label in corner_xy:
+            x_i, y_i = corner_xy[label]
+            return float(x_i), float(y_i)
+
+        params = getattr(vehicle_body, "params", None)
+        params_corner_xy = getattr(params, "corner_xy", None)
+        if isinstance(params_corner_xy, dict) and label in params_corner_xy:
+            x_i, y_i = params_corner_xy[label]
+            return float(x_i), float(y_i)
+
+        signs = vehicle_body.corner_signs[label]
+        x_i = (vehicle_body.params.L_wheelbase / 2.0) * signs["pitch"]
+        y_i = (vehicle_body.params.L_track / 2.0) * signs["roll"]
+        return float(x_i), float(y_i)
+
     def allocate(
         self,
         vehicle_body,
@@ -47,9 +65,7 @@ class YawMomentAllocator:
         fy_bias = float(Fy_total_cmd) / len(labels) if Fy_total_cmd is not None else 0.0
 
         for label in labels:
-            signs = vehicle_body.corner_signs[label]
-            x_i = (vehicle_body.params.L_wheelbase / 2.0) * signs["pitch"]
-            y_i = (vehicle_body.params.L_track / 2.0) * signs["roll"]
+            x_i, y_i = self._resolve_corner_xy(vehicle_body, label)
             if abs(x_i) < self.min_abs_x:
                 raise ValueError("Wheelbase too small for yaw moment allocation")
             Fx_i = float(fx_map.get(label, 0.0))

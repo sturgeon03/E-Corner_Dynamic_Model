@@ -7,11 +7,8 @@ from .controller import (
     YawRateSteerTorqueBlockController,
     compute_steering_angle,
     compute_steering_torque,
-    control_angle,
-    control,
-    control_torque,
 )
-from .config_adapter import ControllerRuntimeConfig, load_controller_runtime_config
+from vehicle_sim.utils.config_adapter import ControllerRuntimeConfig, load_controller_runtime_config
 
 __all__ = [
     "YawRateSteeringControllerOptions",
@@ -22,7 +19,4 @@ __all__ = [
     "ControllerRuntimeConfig",
     "YawRateSteerTorqueBlockController",
     "load_controller_runtime_config",
-    "control",
-    "control_torque",
-    "control_angle",
 ]

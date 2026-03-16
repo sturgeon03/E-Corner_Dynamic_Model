@@ -1,0 +1,62 @@
+# yaw_rate_steering_controller runtime config example
+# This file contains only runtime settings that are actually loaded.
+
+controller:
+  # Mode label for notebooks and logging.
+  mode: ff_fb_ls
+
+  # null means package defaults.
+  vehicle_config_path: null
+  gains_path: null
+
+  # Base runtime settings.
+  dt: 0.001
+  enable_yaw_feedback: true
+  enable_fy_feedback: true
+  fy_feedback_source: estimate
+  enable_steer_feedback: true
+
+  # Estimator switches.
+  enable_estimator: true
+  enable_b_estimator: true
+  enable_c_alpha_estimator: true
+
+  # Shared estimator fallback values.
+  estimator_forgetting_factor: 0.999
+  estimator_p0: 3.5
+
+  # Estimator input paths.
+  use_lateral_force_estimator: true
+  use_slip_angle_estimator: true
+
+  # B_cq estimator tuning.
+  # If use_torque_fallback is false, state should provide steering_torque_axis.
+  b_estimator:
+    lambda: 0.9995
+    p0: 5.0
+    min_value: 1.0
+    max_value: 200.0
+    start_time: 0.1
+    min_samples: 4000
+    sample_decimation: 1
+    dot_min_abs: 0.00001
+    angle_margin_rad: 0.02
+    rate_margin_rad_s: 0.2
+    use_torque_fallback: false
+
+  # C_alpha estimator tuning.
+  c_alpha_estimator:
+    lambda: 0.99
+    p0: 50.0
+    min_value: 20000.0
+    max_value: 200000.0
+    start_time: 1.0
+    min_samples: 10000
+    sample_decimation: 5
+    alpha_min_abs: 0.0001
+    fz_min: 100.0
+    fy_saturation_margin: 0.05
+
+  # Feedforward command limits.
+  steer_ff_max_accel: null
+  steer_ff_torque_limit: null
