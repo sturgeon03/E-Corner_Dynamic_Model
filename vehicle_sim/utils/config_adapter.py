@@ -180,6 +180,7 @@ def _remap_estimator_block(value: Any, key_name: str, prefix: str) -> Dict[str, 
         "alpha_min_abs",
         "fz_min",
         "fy_saturation_margin",
+        "align_source",
         "use_torque_fallback",
     }
     unknown_keys = sorted(str(k) for k in block.keys() if str(k) not in allowed)
@@ -217,6 +218,8 @@ def _remap_estimator_block(value: Any, key_name: str, prefix: str) -> Dict[str, 
         remapped[f"{prefix}_fz_min"] = block["fz_min"]
     if "fy_saturation_margin" in block:
         remapped[f"{prefix}_fy_saturation_margin"] = block["fy_saturation_margin"]
+    if "align_source" in block:
+        remapped[f"{prefix}_align_source"] = block["align_source"]
     if "use_torque_fallback" in block:
         remapped[f"{prefix}_use_torque_fallback"] = block["use_torque_fallback"]
     return remapped

@@ -121,27 +121,17 @@ $$
 M_{z,\text{cmd}} = M_{z,\text{ff}} + M_{z,\text{fb}}
 $$
 
-**2. Yaw moment → 코너별 횡력**
-
-$$
-F_{y,\text{total,cmd}} = m v_x r_\text{ref}
-$$
-
-$$
-F_{y,i} = \frac{M_{z,\text{cmd}} / N_\text{wheels} + y_i F_{x,i}}{x_i} + \frac{F_{y,\text{total,cmd}}}{N_\text{wheels}}
-$$
-
 현재 구현에서는 allocator 호출 시 `Fx_body=None`이므로 `F_{x,i}=0`으로 놓고 쓴다.
 
 **3. 횡력 → 조향각**
 
 $$
 \beta_{\text{ref},i} =
-\text{atan2}(v_{y,\text{cmd}} + r_\text{ref} x_i,\; v_{x,\text{cmd}} - r_\text{ref} y_i)
+\operatorname{atan2}(v_{y,\text{cmd}} + r_\text{ref} x_i,\; v_{x,\text{cmd}} - r_\text{ref} y_i)
 $$
 
 $$
-F_{y,i}^{\text{clip}} = \text{clip}(F_{y,i}, -\mu_i F_{z,i}, \mu_i F_{z,i})
+F_{y,i}^{\text{clip}} = \operatorname{clip}(F_{y,i}, -\mu_i F_{z,i}, \mu_i F_{z,i})
 $$
 
 $$

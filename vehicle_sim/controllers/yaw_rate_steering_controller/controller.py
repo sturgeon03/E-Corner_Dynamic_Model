@@ -63,6 +63,7 @@ class YawRateSteeringControllerOptions:
     b_estimator_angle_margin_rad: float = 0.0
     b_estimator_rate_margin_rad_s: float = 0.0
     b_estimator_use_torque_fallback: bool = False
+    b_estimator_align_source: str = "estimate"  # command | measured | estimate | ignore
     c_alpha_estimator_forgetting_factor: Optional[float] = None
     c_alpha_estimator_p0: Optional[float] = None
     c_alpha_estimator_min_value: Optional[float] = None
@@ -243,6 +244,8 @@ class YawRateSteeringController:
         self._sample_index = 0
         self._last_error_debug: Dict[str, Any] = {}
         self._output_mode = output_mode
+        self._last_fy_total_estimate: Optional[float] = None
+        self._last_fy_estimate_step_index: Optional[int] = None
 
     def reset(self) -> None:
         """Reset all internal controller states."""
@@ -259,6 +262,8 @@ class YawRateSteeringController:
             self._slip_estimator.reset()
         self._sample_index = 0
         self._last_error_debug = {}
+        self._last_fy_total_estimate = None
+        self._last_fy_estimate_step_index = None
 
     def update(self, state: Mapping[str, Any], ref: Mapping[str, Any]) -> Dict[str, float]:
         """Advance one control step. Dispatches to compute_steer_command or
@@ -464,12 +469,61 @@ class YawRateSteeringController:
     ) -> Dict[str, float]:
         source = str(self.options.fy_feedback_source).strip().lower()
         if source == "estimate":
-            if self._lateral_force_estimator is None:
+            fy_total = self._estimate_fy_total(state)
+            if fy_total is None:
                 return self._normalize_map(state.get("fy_tire", {}), 0.0)
-            ay = float(state.get("ay", 0.0))
-            fy_total = float(self._lateral_force_estimator.update(ay))
             return self._distribute_total(fy_total, fy_cmd)
         return self._normalize_map(state.get("fy_tire", {}), 0.0)
+
+    def _estimate_fy_total(self, state: Mapping[str, Any]) -> Optional[float]:
+        if self._lateral_force_estimator is None:
+            return None
+        if self._last_fy_estimate_step_index == self._sample_index:
+            return self._last_fy_total_estimate
+
+        ay = float(state.get("ay", 0.0))
+        fy_total = float(self._lateral_force_estimator.update(ay))
+        self._last_fy_total_estimate = fy_total
+        self._last_fy_estimate_step_index = self._sample_index
+        return fy_total
+
+    def _compute_align_from_fy_map(self, fy_map: Mapping[str, float]) -> Dict[str, float]:
+        align = {}
+        for label in WHEEL_LABELS:
+            corner = self._vehicle.corners[label]
+            fy = float(fy_map.get(label, 0.0))
+            fz = float(corner.state.F_z)
+            if fz > 0.0:
+                mu = float(corner.lateral_tire.params.mu)
+                fy = float(np.clip(fy, -mu * abs(fz), mu * abs(fz)))
+            trail = float(corner.lateral_tire.params.trail)
+            align[label] = float(trail * fy)
+        return align
+
+    def _resolve_b_align_map(
+        self,
+        state: Mapping[str, Any],
+        fy_cmd: Mapping[str, float],
+    ) -> Dict[str, float]:
+        source = str(self.options.b_estimator_align_source).strip().lower()
+        if source == "command":
+            return self._compute_align_cmd(fy_cmd)
+        if source == "measured":
+            fy_map = self._normalize_map(state.get("fy_tire", {}), 0.0)
+            return self._compute_align_from_fy_map(fy_map)
+        if source == "estimate":
+            fy_total = self._estimate_fy_total(state)
+            if fy_total is not None:
+                fy_map = self._distribute_total(fy_total, fy_cmd)
+                return self._compute_align_from_fy_map(fy_map)
+            fy_map = self._normalize_map(state.get("fy_tire", {}), 0.0)
+            return self._compute_align_from_fy_map(fy_map)
+        if source == "ignore":
+            return {label: 0.0 for label in WHEEL_LABELS}
+        raise ValueError(
+            "options.b_estimator_align_source must be one of: "
+            "['command', 'measured', 'estimate', 'ignore']"
+        )
 
     def _update_estimators(
         self,
@@ -509,7 +563,7 @@ class YawRateSteeringController:
                 torque_axis_map = None
 
             if torque_axis_map is not None:
-                align_cmd = self._compute_align_cmd(fy_cmd)
+                align_cmd = self._resolve_b_align_map(state, fy_cmd)
                 for label in WHEEL_LABELS:
                     y_b = (
                         float(torque_axis_map[label])

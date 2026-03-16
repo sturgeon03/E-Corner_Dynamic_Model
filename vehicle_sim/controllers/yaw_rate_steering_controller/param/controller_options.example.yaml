@@ -19,7 +19,7 @@ controller:
   # Estimator switches.
   enable_estimator: true
   enable_b_estimator: true
-  enable_c_alpha_estimator: true
+  enable_c_alpha_estimator: false
 
   # Shared estimator fallback values.
   estimator_forgetting_factor: 0.999
@@ -42,6 +42,7 @@ controller:
     dot_min_abs: 0.00001
     angle_margin_rad: 0.02
     rate_margin_rad_s: 0.2
+    align_source: estimate
     use_torque_fallback: false
 
   # C_alpha estimator tuning.
