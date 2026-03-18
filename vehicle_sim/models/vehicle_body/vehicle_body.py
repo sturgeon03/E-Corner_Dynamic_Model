@@ -74,49 +74,50 @@ class VehicleBody:
             parameters: 차체 물리 파라미터 (None이면 YAML에서 로드)
             config_path: YAML 설정 파일 경로 (None이면 기본 경로 사용)
         """
+        # corner_offsets는 항상 YAML에서 로드 (parameters 직접 전달 시에도 필요)
+        vehicle_spec = load_param('vehicle_spec', config_path)
+        corner_offsets = vehicle_spec['geometry']['corner_offsets']
+        self.corner_offsets = {
+            "FL": {"x": float(corner_offsets['FL']['x']),
+                   "y": float(corner_offsets['FL']['y'])},
+            "FR": {"x": float(corner_offsets['FR']['x']),
+                   "y": float(corner_offsets['FR']['y'])},
+            "RL": {"x": float(corner_offsets['RL']['x']),
+                   "y": float(corner_offsets['RL']['y'])},
+            "RR": {"x": float(corner_offsets['RR']['x']),
+                   "y": float(corner_offsets['RR']['y'])}
+        }
+
         if parameters is None:
             # YAML에서 파라미터 로드
             vehicle_body = load_param('vehicle_body', config_path)
-            vehicle_spec = load_param('vehicle_spec', config_path)
             physics_param = load_param('physics', config_path)
             susp_param = load_param('suspension', config_path)
             unsprung_param = load_param('unsprung', config_path)
 
-            geometry = vehicle_spec.get('geometry', {})
-            inertia = vehicle_body.get('inertia', {})
-
-            # corner_offsets 로드 (CG 기준 각 코너 위치)
-            corner_offsets = geometry.get('corner_offsets', {})
-            self.corner_offsets = {
-                "FL": {"x": float(corner_offsets.get('FL', {}).get('x', 1.155)),
-                       "y": float(corner_offsets.get('FL', {}).get('y', 0.817))},
-                "FR": {"x": float(corner_offsets.get('FR', {}).get('x', 1.155)),
-                       "y": float(corner_offsets.get('FR', {}).get('y', -0.817))},
-                "RL": {"x": float(corner_offsets.get('RL', {}).get('x', -1.815)),
-                       "y": float(corner_offsets.get('RL', {}).get('y', 0.817))},
-                "RR": {"x": float(corner_offsets.get('RR', {}).get('x', -1.815)),
-                       "y": float(corner_offsets.get('RR', {}).get('y', -0.817))}
-            }
+            inertia = vehicle_body['inertia']
 
             # 언스프렁 질량 로드 및 전체 질량 계산
-            m_sprung = float(vehicle_body.get('m', 1500.0))
-            m_u_front = float(unsprung_param.get('m_u_front', 69.12))
-            m_u_rear = float(unsprung_param.get('m_u_rear', 54.995))
+            m_sprung = float(vehicle_body['m'])
+            m_u_front = float(unsprung_param['m_u_front'])
+            m_u_rear = float(unsprung_param['m_u_rear'])
             m_unsprung_total = 2 * m_u_front + 2 * m_u_rear  # 4바퀴 전체
             m_total = m_sprung + m_unsprung_total
 
             self.params = VehicleBodyParameters(
                 m=m_sprung,
                 m_total=m_total,
-                Ixx=float(inertia.get('Ixx', 500.0)),
-                Iyy=float(inertia.get('Iyy', 2500.0)),
-                Izz=float(inertia.get('Izz', 2800.0)),
-                Ixz=float(inertia.get('Ixz', 0.0)),
-                h_CG=float(susp_param.get('z_CG0', 0.5)),
+                Ixx=float(inertia['Ixx']),
+                Iyy=float(inertia['Iyy']),
+                Izz=float(inertia['Izz']),
+                Ixz=float(inertia['Ixz']),
+                h_CG=float(susp_param['z_CG0']),
                 a=abs(self.corner_offsets['FL']['x']),
                 b=abs(self.corner_offsets['RL']['x']),
-                g=float(physics_param.get('g', 9.81))
+                g=float(physics_param['g'])
             )
+        else:
+            self.params = parameters
 
         self.state = VehicleBodyState()
         self.wheel_labels: List[str] = ["FL", "FR", "RR", "RL"]  # 4개 바퀴 고정

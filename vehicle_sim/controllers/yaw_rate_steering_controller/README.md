@@ -101,6 +101,30 @@ steer_trq = trq.update(state, reference)    # {"FL": T_FL, "FR": T_FR, "RL": T_R
 
 ## 제어 수식
 
+> 추후 업데이트 예정.
+
+### 변수 정의
+
+| 기호 | 변수명 | 단위 | 설명 |
+|---|---|---|---|
+| $r$ | `yaw_rate` | rad/s | 현재 요레이트 |
+| $r_\text{ref}$ | `reference["yaw_rate"]` | rad/s | 목표 요레이트 |
+| $e_r$ | — | rad/s | 요레이트 오차 |
+| $I_z$ | — | kg·m² | 차량 요 관성 모멘트 |
+| $M_{z,\text{ff}}$ | — | N·m | 피드포워드 요 모멘트 |
+| $M_{z,\text{fb}}$ | — | N·m | 피드백 요 모멘트 |
+| $M_{z,\text{cmd}}$ | — | N·m | 합산 요 모멘트 지령 |
+| $x_i$ | — | m | 코너 $i$ 종방향 모멘트 암 (CG 기준) |
+| $y_i$ | — | m | 코너 $i$ 횡방향 모멘트 암 (CG 기준) |
+| $F_{x,i}$ | `fx_tire[i]` | N | 코너 $i$ 종력 |
+| $F_{y,i,\text{cmd}}$ | `delta_cmd` 계산에 사용 | N | 코너 $i$ 횡력 지령 |
+| $C_{\alpha,i}$ | — | N/rad | 코너 $i$ 코너링 스티프니스 |
+| $\delta_{i,\text{cmd}}$ | `delta_cmd[i]` | rad | 코너 $i$ 조향각 지령 |
+| $\delta_{i,\text{meas}}$ | `steering_angle[i]` | rad | 코너 $i$ 조향각 측정값 |
+| $T_{\text{steer},i}$ | `steer_trq[i]` | N·m | 코너 $i$ 조향 토크 지령 |
+
+---
+
 **Feedforward — yaw moment**
 
 $$
@@ -110,7 +134,11 @@ $$
 **Feedback — yaw rate PID**
 
 $$
-M_{z,\text{fb}} = k_p \cdot e_r + k_i \int e_r \, dt + k_d \dot{e}_r, \quad e_r = r_\text{ref} - r
+e_r = r_\text{ref} - r
+$$
+
+$$
+M_{z,\text{fb}} = k_p \cdot e_r + k_i \int e_r \, dt + k_d \dot{e}_r
 $$
 
 **합산 yaw moment → 코너별 횡력 배분**
@@ -119,30 +147,37 @@ $$
 M_{z,\text{cmd}} = M_{z,\text{ff}} + M_{z,\text{fb}}
 $$
 
+yaw moment 관계식 $M_z = \sum_i (x_i \cdot F_{y,i} - y_i \cdot F_{x,i})$ 에서 각 코너에 균등 분할하면:
+
 $$
-F_{y,i} = \frac{M_{z,\text{cmd}}}{N_\text{wheels}} \cdot w_i
+F_{y,i,\text{cmd}} = \frac{M_{z,\text{cmd}} / N_\text{wheels} + y_i \cdot F_{x,i}}{x_i}
 $$
 
 **횡력 → 조향각 변환 (선형 타이어)**
 
 $$
-\delta_i = \frac{F_{y,i}}{C_{\alpha,i}}
+\delta_{i,\text{cmd}} = \frac{F_{y,i,\text{cmd}}}{C_{\alpha,i}}
 $$
 
 **조향각 → 토크 (steering PID)**
 
 $$
-T_{\text{steer},i} = k_p \cdot (\delta_{i,\text{cmd}} - \delta_{i,\text{meas}}) + k_i \int (\cdot) \, dt + k_d \frac{d(\cdot)}{dt}
+e_{\delta,i} = \delta_{i,\text{cmd}} - \delta_{i,\text{meas}}
+$$
+
+$$
+T_{\text{steer},i} = k_p \cdot e_{\delta,i} + k_i \int e_{\delta,i} \, dt + k_d \dot{e}_{\delta,i}
 $$
 
 ```text
-e_r          = yaw_rate_ref - yaw_rate_meas
-Mz_fb        = yaw_rate_pid(e_r)
-Mz_cmd       = Mz_ff + Mz_fb
+e_r          = r_ref - r                        [rad/s]
+Mz_ff        = Iz * r_ref_dot                   [N·m]
+Mz_fb        = yaw_rate_pid(e_r)                [N·m]
+Mz_cmd       = Mz_ff + Mz_fb                    [N·m]
 
-Fy_cmd[i]    = yaw_moment_allocator(Mz_cmd, state)
-delta_cmd[i] = Fy_cmd[i] / C_alpha[i]
+Fy_cmd[i]    = (Mz_cmd/N + y_i*Fx_i) / x_i      [N]   ← N·m/m = N
+delta_cmd[i] = Fy_cmd[i] / C_alpha[i]           [rad] ← N/(N/rad) = rad
 
-e_delta[i]   = delta_cmd[i] - steering_angle[i]
-T_steer[i]   = steering_pid(e_delta[i])
+e_delta[i]   = delta_cmd[i] - delta_meas[i]     [rad]
+T_steer[i]   = steering_pid(e_delta[i])         [N·m]
 ```
