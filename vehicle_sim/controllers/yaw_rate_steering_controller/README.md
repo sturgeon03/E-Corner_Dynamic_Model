@@ -121,17 +121,48 @@ $$
 M_{z,\text{cmd}} = M_{z,\text{ff}} + M_{z,\text{fb}}
 $$
 
-**2. Yaw moment → 코너별 횡력**
+**2. Yaw moment → 앞/뒤축 횡력 분배**
 
 $$
 F_{y,\text{total,cmd}} = m v_x r_\text{ref}
 $$
 
 $$
-F_{y,i} = \frac{M_{z,\text{cmd}} / N_\text{wheels} + y_i F_{x,i}}{x_i} + \frac{F_{y,\text{total,cmd}}}{N_\text{wheels}}
+M_{z,\text{lat,des}} = M_{z,\text{cmd}} - \sum_i \left(-y_i F_{x,i}\right)
 $$
 
-현재 구현에서는 allocator 호출 시 `Fx_body=None`이므로 `F_{x,i}=0`으로 놓고 쓴다.
+현재 기본 경로에서는 allocator 호출 시 `Fx_body=None`이므로
+$M_{z,\text{lat,des}} = M_{z,\text{cmd}}$ 이다.
+
+앞/뒤축 횡력은 아래 두 조건을 만족하도록 먼저 계산한다.
+
+$$
+F_{y,f} + F_{y,r} = F_{y,\text{total,cmd}}
+$$
+
+$$
+l_f F_{y,f} - l_r F_{y,r} = M_{z,\text{lat,des}}
+$$
+
+연립하면:
+
+$$
+F_{y,f} = \frac{M_{z,\text{lat,des}} + l_r F_{y,\text{total,cmd}}}{l_f + l_r}
+$$
+
+$$
+F_{y,r} = \frac{l_f F_{y,\text{total,cmd}} - M_{z,\text{lat,des}}}{l_f + l_r}
+$$
+
+현재 구현은 각 축 내부 좌/우 하중이동은 고려하지 않고 좌우를 반반으로 나눈다.
+
+$$
+F_{y,\mathrm{FL}} = F_{y,\mathrm{FR}} = \frac{F_{y,f}}{2}
+$$
+
+$$
+F_{y,\mathrm{RL}} = F_{y,\mathrm{RR}} = \frac{F_{y,r}}{2}
+$$
 
 **3. 횡력 → 조향각**
 
@@ -189,6 +220,19 @@ $$
 T_{\text{motor},i} = \frac{T_{\text{ff,axis},i} + T_{\text{fb,axis},i}}{g_i}
 $$
 
+### 차원 점검
+
+- $F_{y,\text{total,cmd}} = m v_x r_\text{ref}$: $[kg]\,[m/s]\,[1/s] = [kg \cdot m/s^2] = [N]$
+- $F_{y,f}, F_{y,r}$: 분자 $[N \cdot m] + [m]\,[N] = [N \cdot m]$, 분모 $[m]$ 이므로 결과는 $[N]$
+- $\beta_{\text{ref},i}$: `atan2`의 두 입력이 모두 속도 $[m/s]$ 이므로 결과는 각도 $[rad]$
+- $\alpha_{\text{cmd},i} = -F_{y,i}^{\text{clip}}/C_{\alpha,i}$: $[N] / [N/rad] = [rad]$
+- $T_{\text{align},i} = trail_i F_{y,i}^{\text{clip}}$: $[m]\,[N] = [N \cdot m]$
+- $J_{cq}\ddot{\delta} + B_{cq}\dot{\delta}$: 각각 $[N \cdot m \cdot s^2/rad]\,[rad/s^2]$,
+  $[N \cdot m \cdot s/rad]\,[rad/s]$ 이므로 둘 다 $[N \cdot m]$
+
+현재 README에서 차원이 틀린 식은 없었고, 문제는 **2번 횡력 분배식이 예전 휠별 균등 분배식으로 남아 있었다는 점**이다.
+위 식으로 현재 코드와 일치하도록 수정했다.
+
 ## 기호 설명
 
 | 기호 | 의미 | 단위 | 비고 |
@@ -205,11 +249,15 @@ $$
 | $v_{x,\text{cmd}}$ | 조향각 계산에 쓰는 종방향 속도 | m/s | 현재 구현에서는 $v_x$와 동일 |
 | $v_{y,\text{cmd}}$ | 조향각 계산에 쓰는 횡방향 속도 목표 | m/s | 현재 구현에서는 `0` |
 | $F_{y,\text{total,cmd}}$ | 총 횡력 목표 | N | $m v_x r_\text{ref}$ |
-| $N_\text{wheels}$ | 바퀴 개수 | - | 현재 4 |
+| $M_{z,\text{lat,des}}$ | 횡력으로 만들어야 할 목표 yaw moment | N·m | 종력으로 이미 생성된 yaw moment를 제외한 잔여 모멘트 |
+| $l_f$ | CG → 앞축 거리 | m | front axle lever arm |
+| $l_r$ | CG → 뒤축 거리 | m | rear axle lever arm |
 | $x_i$ | CG 기준 i번 바퀴의 x 위치 | m | 전방 `+`, 후방 `-` |
 | $y_i$ | CG 기준 i번 바퀴의 y 위치 | m | 좌측 `+`, 우측 `-` |
-| $F_{x,i}$ | i번 바퀴 종력 | N | allocator 일반식에는 포함, 현재 경로에서는 `0` |
-| $F_{y,i}$ | allocator가 만든 i번 바퀴 횡력 명령 | N | wheel frame 기준 |
+| $F_{x,i}$ | i번 바퀴 종력 | N | allocator에 종력이 주어지면 $M_{z,\text{lat,des}}$ 계산에 반영 |
+| $F_{y,f}$ | 앞축 총 횡력 명령 | N | 앞축 좌/우 합 |
+| $F_{y,r}$ | 뒤축 총 횡력 명령 | N | 뒤축 좌/우 합 |
+| $F_{y,i}$ | i번 바퀴 횡력 명령 | N | wheel frame 기준 |
 | $F_{y,i}^\text{actual}$ | Fy feedback용 실제/추정 횡력 | N | measured 또는 estimated |
 | $F_{z,i}$ | i번 바퀴 수직하중 | N | `state["fz"]` 또는 정하중 근사 |
 | $\beta_{\text{ref},i}$ | i번 바퀴 위치에서의 목표 진행방향 각 | rad | `atan2(v_y_ref, v_x_ref)` |
