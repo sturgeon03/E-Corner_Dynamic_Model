@@ -101,6 +101,7 @@ steer_trq = trq.update(state, reference)    # {"FL": T_FL, "FR": T_FR, "RL": T_R
 
 ## 제어 수식
 
+<<<<<<< HEAD
 > 추후 업데이트 예정.
 
 ### 변수 정의
@@ -126,27 +127,37 @@ steer_trq = trq.update(state, reference)    # {"FL": T_FL, "FR": T_FR, "RL": T_R
 ---
 
 **Feedforward — yaw moment**
+=======
+아래 식은 설명용 연속시간 표기이며, 실제 코드는 이산시간으로 동작한다.
 
-$$
-M_{z,\text{ff}} = I_z \cdot \dot{r}_\text{ref}
-$$
-
-**Feedback — yaw rate PID**
+**1. Yaw moment 생성**
+>>>>>>> 65206fd9de052a4783ff03569489f71043b9a168
 
 $$
 e_r = r_\text{ref} - r
 $$
 
 $$
-M_{z,\text{fb}} = k_p \cdot e_r + k_i \int e_r \, dt + k_d \dot{e}_r
+<<<<<<< HEAD
+e_r = r_\text{ref} - r
 $$
 
-**합산 yaw moment → 코너별 횡력 배분**
+$$
+M_{z,\text{fb}} = k_p \cdot e_r + k_i \int e_r \, dt + k_d \dot{e}_r
+=======
+M_{z,\text{ff}} = I_z \dot{r}_\text{ref}
+>>>>>>> 65206fd9de052a4783ff03569489f71043b9a168
+$$
+
+$$
+M_{z,\text{fb}} = k_p e_r + k_i \int e_r \, dt + k_d \dot{e}_r
+$$
 
 $$
 M_{z,\text{cmd}} = M_{z,\text{ff}} + M_{z,\text{fb}}
 $$
 
+<<<<<<< HEAD
 yaw moment 관계식 $M_z = \sum_i (x_i \cdot F_{y,i} - y_i \cdot F_{x,i})$ 에서 각 코너에 균등 분할하면:
 
 $$
@@ -157,11 +168,16 @@ $$
 
 $$
 \delta_{i,\text{cmd}} = \frac{F_{y,i,\text{cmd}}}{C_{\alpha,i}}
+=======
+**2. Yaw moment → 코너별 횡력**
+
+$$
+F_{y,\text{total,cmd}} = m v_x r_\text{ref}
+>>>>>>> 65206fd9de052a4783ff03569489f71043b9a168
 $$
 
-**조향각 → 토크 (steering PID)**
-
 $$
+<<<<<<< HEAD
 e_{\delta,i} = \delta_{i,\text{cmd}} - \delta_{i,\text{meas}}
 $$
 
@@ -181,3 +197,112 @@ delta_cmd[i] = Fy_cmd[i] / C_alpha[i]           [rad] ← N/(N/rad) = rad
 e_delta[i]   = delta_cmd[i] - delta_meas[i]     [rad]
 T_steer[i]   = steering_pid(e_delta[i])         [N·m]
 ```
+=======
+F_{y,i} = \frac{M_{z,\text{cmd}} / N_\text{wheels} + y_i F_{x,i}}{x_i} + \frac{F_{y,\text{total,cmd}}}{N_\text{wheels}}
+$$
+
+현재 구현에서는 allocator 호출 시 `Fx_body=None`이므로 `F_{x,i}=0`으로 놓고 쓴다.
+
+**3. 횡력 → 조향각**
+
+$$
+\beta_{\text{ref},i} =
+\text{atan2}(v_{y,\text{cmd}} + r_\text{ref} x_i,\; v_{x,\text{cmd}} - r_\text{ref} y_i)
+$$
+
+$$
+F_{y,i}^{\text{clip}} = \text{clip}(F_{y,i}, -\mu_i F_{z,i}, \mu_i F_{z,i})
+$$
+
+$$
+\alpha_{\text{cmd},i} = -\frac{F_{y,i}^{\text{clip}}}{C_{\alpha,i}}
+$$
+
+$$
+\delta_{\text{ff},i} = \beta_{\text{ref},i} - \alpha_{\text{cmd},i}
+$$
+
+Fy feedback 사용 시:
+
+$$
+e_{Fy,i} = F_{y,i} - F_{y,i}^{\text{actual}}, \qquad
+\delta_{\text{cmd},i} = \delta_{\text{ff},i} + PID_{Fy,i}(e_{Fy,i})
+$$
+
+Fy feedback 미사용 시:
+
+$$
+\delta_{\text{cmd},i} = \delta_{\text{ff},i}
+$$
+
+**4. 조향각 → 모터 토크**
+
+$$
+T_{\text{align},i} = trail_i F_{y,i}^{\text{clip}}
+$$
+
+$$
+T_{\text{ff,axis},i} = J_{cq} \ddot{\delta}_{\text{cmd},i}
++ B_{cq} \dot{\delta}_{\text{cmd},i}
++ T_{\text{align},i}
+$$
+
+$$
+e_{\delta,i} = \delta_{\text{cmd},i} - \delta_{\text{meas},i}
+$$
+
+$$
+T_{\text{fb,axis},i} = PID_{\delta,i}(e_{\delta,i})
+$$
+
+$$
+T_{\text{motor},i} = \frac{T_{\text{ff,axis},i} + T_{\text{fb,axis},i}}{g_i}
+$$
+
+## 기호 설명
+
+| 기호 | 의미 | 단위 | 비고 |
+|---|---|---|---|
+| `r` | 실제 yaw rate | rad/s | `state["yaw_rate"]` |
+| `r_\text{ref}` | yaw rate 지령 | rad/s | `ref["yaw_rate"]` |
+| `e_r` | yaw rate 오차 | rad/s | `r_ref - r` |
+| `I_z` | 차량 yaw 축 관성모멘트 | kg·m² | vehicle body의 `Izz` |
+| `M_{z,\text{ff}}` | feedforward yaw moment | N·m | yaw rate 지령 변화율 기반 |
+| `M_{z,\text{fb}}` | feedback yaw moment | N·m | yaw PID 출력 |
+| `M_{z,\text{cmd}}` | 최종 yaw moment 명령 | N·m | `M_ff + M_fb` |
+| `m` | 차량 질량 | kg | vehicle body의 `m` |
+| `v_x` | 종방향 속도 | m/s | `state["vx"]` |
+| `v_{x,\text{cmd}}` | 조향각 계산에 쓰는 종방향 속도 | m/s | 현재 구현에서는 `v_x`와 동일 |
+| `v_{y,\text{cmd}}` | 조향각 계산에 쓰는 횡방향 속도 목표 | m/s | 현재 구현에서는 `0` |
+| `F_{y,\text{total,cmd}}` | 총 횡력 목표 | N | `m v_x r_ref` |
+| `N_\text{wheels}` | 바퀴 개수 | - | 현재 4 |
+| `x_i` | CG 기준 i번 바퀴의 x 위치 | m | 전방 `+`, 후방 `-` |
+| `y_i` | CG 기준 i번 바퀴의 y 위치 | m | 좌측 `+`, 우측 `-` |
+| `F_{x,i}` | i번 바퀴 종력 | N | allocator 일반식에는 포함, 현재 경로에서는 `0` |
+| `F_{y,i}` | allocator가 만든 i번 바퀴 횡력 명령 | N | wheel frame 기준 |
+| `F_{y,i}^{\text{actual}}` | Fy feedback용 실제/추정 횡력 | N | measured 또는 estimated |
+| `F_{z,i}` | i번 바퀴 수직하중 | N | `state["fz"]` 또는 정하중 근사 |
+| `\beta_{\text{ref},i}` | i번 바퀴 위치에서의 목표 진행방향 각 | rad | `atan2(v_y_ref, v_x_ref)` |
+| `\mu_i` | i번 타이어 마찰계수 | - | lateral tire parameter |
+| `F_{y,i}^{\text{clip}}` | 마찰한계로 clamp한 횡력 | N | `clip(F_y, -\mu F_z, \mu F_z)` |
+| `C_{\alpha,i}` | i번 코너의 cornering stiffness | N/rad | 기본값 또는 추정값 |
+| `\alpha_{\text{cmd},i}` | 횡력에 대응하는 slip angle 명령 | rad | `-F_y^{clip}/C_alpha` |
+| `\delta_{\text{ff},i}` | feedforward 조향각 | rad | `beta_ref - alpha_cmd` |
+| `\delta_{\text{cmd},i}` | 최종 조향각 명령 | rad | `delta_ff + Fy feedback` |
+| `\delta_{\text{meas},i}` | 실제 조향각 | rad | `state["steering_angle"][i]` |
+| `e_{Fy,i}` | 횡력 오차 | N | `F_y_cmd - F_y_actual` |
+| `e_{\delta,i}` | 조향각 오차 | rad | `delta_cmd - delta_meas` |
+| `\dot{\delta}_{\text{cmd},i}` | 조향각 명령 속도 | rad/s | 명령 이력 차분 |
+| `\ddot{\delta}_{\text{cmd},i}` | 조향각 명령 가속도 | rad/s² | 명령 속도 차분 |
+| `trail_i` | pneumatic / mechanical trail 등가값 | m | 구현에서는 lateral tire `trail` |
+| `T_{\text{align},i}` | self-aligning torque 근사값 | N·m | `trail_i * F_y^{clip}` |
+| `J_{cq}` | 조향축 등가 관성 | N·m·s²/rad | steering FF 파라미터 |
+| `B_{cq}` | 조향축 등가 점성계수 | N·m·s/rad | steering FF 파라미터 |
+| `T_{\text{ff,axis},i}` | 조향축 기준 feedforward 토크 | N·m | 관성 + 감쇠 + aligning |
+| `PID_{\delta,i}` | 조향각 feedback PID | N·m | 축 토크 기준 출력 |
+| `T_{\text{fb,axis},i}` | 조향각 feedback 축 토크 | N·m | `PID_delta(e_delta)` |
+| `g_i` | 조향 gear ratio | - | axis torque → motor torque 변환 |
+| `T_{\text{motor},i}` | 최종 모터 토크 명령 | N·m | `(T_ff_axis + T_fb_axis) / g_i` |
+
+※ 제어기 추후 추가 업데이트 예정
+>>>>>>> 65206fd9de052a4783ff03569489f71043b9a168
